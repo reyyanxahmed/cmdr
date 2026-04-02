@@ -12,6 +12,3 @@ dist/
 claude-code-main/
 claw-code-main/
 open-multi-agent-main/
-
-# Lock files
-package-lock.json
