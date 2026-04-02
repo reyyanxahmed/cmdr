@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.js.map
+*.d.ts.map
+*.d.ts
+.DS_Store
+.env
+.env.*
+*.tsbuildinfo
+
+# Reference repos (not part of cmdr)
+claude-code-main/
+claw-code-main/
+open-multi-agent-main/
+
+# Lock files
+package-lock.json
