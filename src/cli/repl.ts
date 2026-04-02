@@ -27,7 +27,7 @@ import {
 } from './commands.js'
 import { PermissionManager, classifyTool } from '../core/permissions.js'
 import type { RunCallbacks } from '../core/agent-runner.js'
-import { saveSession, loadSession, listSessions } from '../session/session-persistence.js'
+import { saveSession, loadSession, listSessions, findRecentSession, DebouncedSaver } from '../session/session-persistence.js'
 
 export interface ReplOptions {
   model: string
@@ -35,6 +35,7 @@ export interface ReplOptions {
   initialPrompt?: string
   dangerouslySkipPermissions?: boolean
   resume?: string
+  continue?: boolean
   verbose?: boolean
 }
 
@@ -121,6 +122,24 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     } else {
       console.log(renderError(`Session not found: ${options.resume}`))
     }
+  } else if (options.continue) {
+    const saved = await findRecentSession(cwd)
+    if (saved) {
+      agent.replaceMessages(saved.messages)
+      session.syncFromAgent(saved.messages)
+      console.log(renderInfo(`Continued session ${DIM(saved.id)} (${saved.messages.length} messages)`))
+    } else {
+      console.log(DIM('  No previous session found for this directory.'))
+    }
+  }
+
+  // Debounced auto-save (max once per 5s)
+  const autoSaver = new DebouncedSaver(5000)
+  const doSave = async () => {
+    session.syncFromAgent(agent.getHistory())
+    if (session.messages.length > 0) {
+      await saveSession(session.getState(), currentModel)
+    }
   }
 
   console.log('')
@@ -128,6 +147,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   // --- Handle initial prompt if provided ---
   if (options.initialPrompt) {
     await handleUserMessage(options.initialPrompt, agent, session, currentModel, permissionManager, verbose, adapter)
+    await doSave()
     return
   }
 
@@ -213,6 +233,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
       })
 
       if (result === '__QUIT__') {
+        autoSaver.cancel()
         session.syncFromAgent(agent.getHistory())
         if (session.messages.length > 0) {
           const sid = await saveSession(session.getState(), currentModel)
@@ -249,12 +270,38 @@ export async function startRepl(options: ReplOptions): Promise<void> {
         return
       }
 
+      if (result === '__SESSION_SAVE__') {
+        session.syncFromAgent(agent.getHistory())
+        if (session.messages.length > 0) {
+          const sid = await saveSession(session.getState(), currentModel)
+          console.log(renderInfo(`Session saved: ${DIM(sid)}`))
+        } else {
+          console.log(renderInfo('No messages to save.'))
+        }
+        return
+      }
+
+      if (typeof result === 'string' && result.startsWith('__SESSION_RESUME__:')) {
+        const sessionId = result.slice('__SESSION_RESUME__:'.length)
+        const saved = await loadSession(sessionId)
+        if (saved) {
+          agent.replaceMessages(saved.messages)
+          session.syncFromAgent(saved.messages)
+          console.log(renderInfo(`Resumed session ${DIM(saved.id)} (${saved.messages.length} messages)`))
+        } else {
+          console.log(renderError(`Session not found: ${sessionId}`))
+        }
+        return
+      }
+
       if (result) console.log(result)
       return
     }
 
     // Regular message
-    await handleUserMessage(input, agent, session, currentModel, permissionManager, verbose, adapter)
+    await handleUserMessage(input, agent, session, currentModel, permissionManager, verbose, adapter, () => {
+      autoSaver.schedule(doSave)
+    })
   }
 
   rl.on('line', (line) => {
@@ -264,6 +311,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   })
 
   rl.on('close', async () => {
+    autoSaver.cancel()
     if (!closed) {
       session.syncFromAgent(agent.getHistory())
       if (session.messages.length > 0) {
@@ -404,6 +452,7 @@ async function handleUserMessage(
   permissionManager: PermissionManager,
   verbose: boolean,
   adapter: LLMAdapter,
+  onAfterResponse?: () => void,
 ): Promise<void> {
   console.log('') // spacing
 
@@ -531,6 +580,9 @@ async function handleUserMessage(
       // best effort — don't break the REPL
     }
   }
+
+  // Trigger debounced auto-save
+  onAfterResponse?.()
 
   console.log(GREEN_DIM('─'.repeat(60)))
   console.log('')

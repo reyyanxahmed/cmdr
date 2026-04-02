@@ -10,6 +10,7 @@ export interface CliArgs {
   prompt?: string
   dangerouslySkipPermissions?: boolean
   resume?: string
+  continue?: boolean
   verbose?: boolean
 }
 
@@ -48,6 +49,10 @@ export function parseArgs(argv: string[]): CliArgs {
       case '-r':
         args.resume = argv[++i]
         break
+      case '--continue':
+      case '-c':
+        args.continue = true
+        break
       case '--verbose':
         args.verbose = true
         break
@@ -78,6 +83,7 @@ export function printHelp(): void {
     -u, --ollama-url <url>   Ollama server URL (default: http://localhost:11434)
     -p, --prompt <text>      Run a single prompt and exit
     -r, --resume <id>        Resume a previous session
+    -c, --continue           Resume most recent session for this directory
     --verbose                Print full tool output (default: collapsed)
     -h, --help               Show this help
     -v, --version            Show version

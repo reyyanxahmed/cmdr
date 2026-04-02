@@ -35,6 +35,8 @@ export { discoverProject } from './session/project-context.js'
 export { buildSystemPrompt } from './session/prompt-builder.js'
 export { compactHistory, shouldCompact, DEFAULT_COMPACTION_CONFIG } from './session/compaction.js'
 export type { CompactionConfig } from './session/compaction.js'
+export { saveSession, loadSession, listSessions, findRecentSession, DebouncedSaver } from './session/session-persistence.js'
+export type { SavedSession } from './session/session-persistence.js'
 
 // CLI
 export { startRepl } from './cli/repl.js'
