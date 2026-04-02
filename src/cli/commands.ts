@@ -378,6 +378,47 @@ registerCommand({
 })
 
 registerCommand({
+  name: 'config',
+  description: 'View or set configuration',
+  execute: async (args, context) => {
+    if (!args) {
+      const lines = [
+        '',
+        `  ${PURPLE.bold('Configuration')}`,
+        '',
+        `  ${DIM('Model:')}     ${WHITE(context.model)}`,
+        `  ${DIM('Ollama:')}    ${WHITE(context.ollamaUrl)}`,
+        '',
+        `  ${DIM('Config files:')}`,
+        `  ${DIM('  User:')}    ~/.cmdr/config.toml`,
+        `  ${DIM('  Project:')} .cmdr.toml`,
+        '',
+        `  ${DIM('Env vars: CMDR_MODEL, CMDR_OLLAMA_URL, CMDR_PROVIDER')}`,
+        '',
+      ]
+      return lines.join('\n')
+    }
+    return renderInfo(`Config editing not yet supported. Edit ~/.cmdr/config.toml directly.`)
+  },
+})
+
+registerCommand({
+  name: 'plugin',
+  description: 'Manage plugins: /plugin list',
+  execute: async (args) => {
+    return `__PLUGIN__:${args || 'list'}`
+  },
+})
+
+registerCommand({
+  name: 'mcp',
+  description: 'Manage MCP servers: /mcp list, /mcp connect <url>',
+  execute: async (args) => {
+    return `__MCP__:${args || 'list'}`
+  },
+})
+
+registerCommand({
   name: 'quit',
   description: 'Exit cmdr',
   execute: async () => {
