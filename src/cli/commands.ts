@@ -295,6 +295,51 @@ registerCommand({
 })
 
 registerCommand({
+  name: 'session',
+  description: 'Session management: /session save, /session resume <id>',
+  execute: async (args, context) => {
+    const sub = args.trim().split(/\s+/)
+    const action = sub[0]?.toLowerCase()
+
+    if (!action || action === 'list') {
+      // Default: list sessions
+      const sessions = await listSessions()
+      if (sessions.length === 0) {
+        return renderInfo('No saved sessions.')
+      }
+      const lines = [
+        '',
+        `  ${PURPLE.bold('Saved sessions')}`,
+        '',
+      ]
+      for (const s of sessions.slice(0, 10)) {
+        const date = new Date(s.lastActivity)
+        const timeStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString()
+        const dir = s.projectRoot.split('/').pop() || s.projectRoot
+        const summaryText = s.summary ? `  ${DIM(s.summary.slice(0, 40))}` : ''
+        lines.push(`  ${GREEN('•')} ${DIM(s.id.slice(0, 20))}  ${WHITE(dir)}  ${DIM(s.model)}  ${DIM(timeStr)}  ${DIM(`${s.messageCount} msgs`)}${summaryText}`)
+      }
+      lines.push('')
+      return lines.join('\n')
+    }
+
+    if (action === 'save') {
+      return '__SESSION_SAVE__'
+    }
+
+    if (action === 'resume') {
+      const sessionId = sub[1]
+      if (!sessionId) {
+        return renderInfo('Usage: /session resume <session-id>')
+      }
+      return `__SESSION_RESUME__:${sessionId}`
+    }
+
+    return renderInfo('Usage: /session [save|resume <id>|list]')
+  },
+})
+
+registerCommand({
   name: 'quit',
   description: 'Exit cmdr',
   execute: async () => {

@@ -36,6 +36,7 @@ async function main(): Promise<void> {
       initialPrompt: args.prompt,
       dangerouslySkipPermissions: args.dangerouslySkipPermissions,
       resume: args.resume,
+      continue: args.continue,
       verbose: args.verbose,
     })
   } catch (err) {
