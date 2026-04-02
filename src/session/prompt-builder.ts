@@ -34,5 +34,10 @@ export function buildSystemPrompt(options: PromptBuildOptions): string {
     parts.push(`\n\nProject context:\n${contextParts.join('\n')}\nRoot: ${ctx.rootDir}`)
   }
 
+  // Inject CMDR.md workspace instructions
+  if (ctx.cmdrInstructions) {
+    parts.push(`\n\n<workspace_instructions>\n${ctx.cmdrInstructions}\n</workspace_instructions>`)
+  }
+
   return parts.join('')
 }

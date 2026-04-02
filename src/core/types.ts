@@ -199,6 +199,8 @@ export interface ProjectContext {
   packageManager?: string
   gitBranch?: string
   relevantFiles: string[]
+  /** Contents of CMDR.md from the project root, if present. */
+  cmdrInstructions?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -233,7 +235,38 @@ export interface CommandContext {
   clearHistory: () => void
   ollamaUrl: string
   adapter: LLMAdapter
+  model: string
+  agentTokenUsage: TokenUsage
+  permissionManager?: import('./permissions.js').PermissionManager
 }
+
+// ---------------------------------------------------------------------------
+// Permissions / HITL
+// ---------------------------------------------------------------------------
+
+/** Permission mode controls how tool calls are approved. */
+export type PermissionMode = 'normal' | 'yolo' | 'strict'
+
+/** Tools classified as read-only are auto-approved in 'normal' mode. */
+export type ToolRiskLevel = 'read-only' | 'write' | 'dangerous'
+
+/**
+ * User's approval decision for a tool call.
+ * - 'allow'       — run this one call
+ * - 'deny'        — skip this call, return an error to the model
+ * - 'allow-always' — auto-approve all future calls to this tool for the session
+ */
+export type ApprovalDecision = 'allow' | 'deny' | 'allow-always'
+
+/**
+ * Callback the REPL provides so the runner can ask for user approval
+ * before executing a dangerous / write tool.
+ */
+export type ApprovalCallback = (
+  toolName: string,
+  input: Record<string, unknown>,
+  riskLevel: ToolRiskLevel,
+) => Promise<ApprovalDecision>
 
 // ---------------------------------------------------------------------------
 // Config
