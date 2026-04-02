@@ -1,0 +1,50 @@
+Task: MBPP/3
+Passed: true
+Duration: 2231ms
+Error: none
+
+--- RAW OUTPUT ---
+```python
+def is_not_prime(n):
+    """
+    Check if a number is not prime.
+    
+    Args:
+        n (int): The number to check
+        
+    Returns:
+        bool: True if the number is not prime, False if it is prime
+    """
+    # Handle edge cases
+    if n < 2:
+        return True
+    
+    # Check if n is divisible by any number from 2 to sqrt(n)
+    for i in range(2, int(n**0.5) + 1):
+        if n % i == 0:
+            return True
+    
+    return False
+```
+
+--- EXTRACTED CODE ---
+def is_not_prime(n):
+    """
+    Check if a number is not prime.
+    
+    Args:
+        n (int): The number to check
+        
+    Returns:
+        bool: True if the number is not prime, False if it is prime
+    """
+    # Handle edge cases
+    if n < 2:
+        return True
+    
+    # Check if n is divisible by any number from 2 to sqrt(n)
+    for i in range(2, int(n**0.5) + 1):
+        if n % i == 0:
+            return True
+    
+    return False

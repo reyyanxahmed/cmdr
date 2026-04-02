@@ -1,0 +1,52 @@
+Task: HumanEval/1
+Passed: true
+Duration: 2477ms
+Error: none
+
+--- RAW OUTPUT ---
+```python
+def separate_paren_groups(paren_string: str) -> List[str]:
+    # Remove all spaces from the input string
+    paren_string = paren_string.replace(' ', '')
+    
+    result = []
+    current_group = ""
+    balance = 0
+    
+    for char in paren_string:
+        current_group += char
+        if char == '(':
+            balance += 1
+        elif char == ')':
+            balance -= 1
+        
+        # When balance reaches 0, we have a complete group
+        if balance == 0:
+            result.append(current_group)
+            current_group = ""
+    
+    return result
+```
+
+--- EXTRACTED CODE ---
+def separate_paren_groups(paren_string: str) -> List[str]:
+    # Remove all spaces from the input string
+    paren_string = paren_string.replace(' ', '')
+    
+    result = []
+    current_group = ""
+    balance = 0
+    
+    for char in paren_string:
+        current_group += char
+        if char == '(':
+            balance += 1
+        elif char == ')':
+            balance -= 1
+        
+        # When balance reaches 0, we have a complete group
+        if balance == 0:
+            result.append(current_group)
+            current_group = ""
+    
+    return result
