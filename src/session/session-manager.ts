@@ -107,4 +107,11 @@ export class SessionManager {
       this.session.projectContext.relevantFiles.push(file)
     }
   }
+
+  /** Replace session messages with the agent's current history. */
+  syncFromAgent(messages: LLMMessage[]): void {
+    this.session.messages = [...messages]
+    this.session.tokenCount = countMessageTokens(this.session.messages as any)
+    this.session.lastActivity = new Date()
+  }
 }

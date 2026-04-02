@@ -74,6 +74,16 @@ export async function discoverProject(rootDir: string): Promise<ProjectContext> 
     }
   }
 
+  // CMDR.md workspace instructions
+  try {
+    const cmdrMd = await readFile(join(rootDir, 'CMDR.md'), 'utf-8')
+    if (cmdrMd.trim()) {
+      context.cmdrInstructions = cmdrMd.trim()
+    }
+  } catch {
+    // no CMDR.md — that's fine
+  }
+
   // Key files
   try {
     const entries = await readdir(rootDir)

@@ -158,3 +158,59 @@ export function renderSessionStatus(
     `  ${DIM('Tokens:')} ${CYAN(String(tokens.input))} ${DIM('in /')} ${PURPLE(String(tokens.output))} ${DIM('out')}`,
   ].join('\n')
 }
+
+// ---------------------------------------------------------------------------
+// Context window visualization
+// ---------------------------------------------------------------------------
+
+export function renderContextWindow(opts: {
+  model: string
+  usedTokens: number
+  maxTokens: number
+  inputTokens: number
+  outputTokens: number
+  systemPromptTokens: number
+  conversationTokens: number
+  turns: number
+  messageCount: number
+}): string {
+  const { model, usedTokens, maxTokens, inputTokens, outputTokens,
+    systemPromptTokens, conversationTokens, turns, messageCount } = opts
+
+  const remaining = Math.max(0, maxTokens - usedTokens)
+  const pct = maxTokens > 0 ? (usedTokens / maxTokens) * 100 : 0
+
+  // Build the progress bar (40 chars wide)
+  const barWidth = 40
+  const filledCount = Math.round((pct / 100) * barWidth)
+  const emptyCount = barWidth - filledCount
+
+  // Color the bar based on usage: green < 60%, yellow 60-85%, red > 85%
+  const barColor = pct > 85 ? RED : pct > 60 ? YELLOW : GREEN
+  const filled = barColor('█'.repeat(filledCount))
+  const empty = DIM('░'.repeat(emptyCount))
+  const pctStr = pct.toFixed(1)
+
+  const fmtNum = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
+
+  const lines = [
+    '',
+    `  ${PURPLE.bold('Context Window')} ${DIM('—')} ${GREEN(model)}`,
+    '',
+    `  ${filled}${empty} ${WHITE(pctStr + '%')}`,
+    '',
+    `  ${DIM('Used:')}      ${CYAN(fmtNum(usedTokens))} ${DIM('/')} ${WHITE(fmtNum(maxTokens))} ${DIM('tokens')}`,
+    `  ${DIM('Remaining:')} ${remaining > maxTokens * 0.3 ? GREEN(fmtNum(remaining)) : remaining > maxTokens * 0.15 ? YELLOW(fmtNum(remaining)) : RED(fmtNum(remaining))} ${DIM('tokens')}`,
+    '',
+    `  ${DIM('Breakdown:')}`,
+    `    ${PURPLE('●')} ${DIM('System prompt:')}   ${WHITE(fmtNum(systemPromptTokens))}`,
+    `    ${CYAN('●')} ${DIM('Conversation:')}    ${WHITE(fmtNum(conversationTokens))}`,
+    `    ${GREEN('●')} ${DIM('Input tokens:')}    ${WHITE(fmtNum(inputTokens))} ${DIM('(API reported)')}`,
+    `    ${PURPLE_DIM('●')} ${DIM('Output tokens:')}   ${WHITE(fmtNum(outputTokens))} ${DIM('(API reported)')}`,
+    '',
+    `  ${DIM('Turns:')} ${WHITE(String(turns))}  ${DIM('Messages:')} ${WHITE(String(messageCount))}`,
+    '',
+    SEPARATOR,
+  ]
+  return lines.join('\n')
+}

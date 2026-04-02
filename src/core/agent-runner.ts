@@ -7,10 +7,12 @@
 import type {
   LLMMessage, ContentBlock, TextBlock, ToolUseBlock, ToolResultBlock,
   ToolCallRecord, TokenUsage, StreamEvent, ToolResult, ToolUseContext,
-  LLMAdapter, LLMChatOptions, LLMResponse,
+  LLMAdapter, LLMChatOptions, LLMResponse, ApprovalCallback, LLMToolDef,
 } from '../core/types.js'
 import type { ToolRegistry } from '../tools/registry.js'
 import type { ToolExecutor } from '../tools/executor.js'
+import type { PermissionManager } from './permissions.js'
+import { classifyIntent, filterToolsByIntent } from './intent.js'
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -34,6 +36,8 @@ export interface RunCallbacks {
   readonly onToolResult?: (name: string, result: ToolResult) => void
   readonly onMessage?: (message: LLMMessage) => void
   readonly onText?: (text: string) => void
+  /** If provided, the runner will ask for approval before executing write/dangerous tools. */
+  readonly onToolApproval?: ApprovalCallback
 }
 
 export interface RunResult {
@@ -80,6 +84,7 @@ export class AgentRunner {
     private readonly toolRegistry: ToolRegistry,
     private readonly toolExecutor: ToolExecutor,
     private readonly options: RunnerOptions,
+    private readonly permissionManager?: PermissionManager,
   ) {
     this.maxTurns = options.maxTurns ?? 10
   }
@@ -116,20 +121,23 @@ export class AgentRunner {
     let finalOutput = ''
     let turns = 0
 
-    // Build tool definitions
+    // Build the full tool set (may be narrowed per-turn by intent)
     const allDefs = this.toolRegistry.toToolDefs()
-    const toolDefs = this.options.allowedTools
+    const fullToolDefs = this.options.allowedTools
       ? allDefs.filter(d => this.options.allowedTools!.includes(d.name))
       : allDefs
 
-    const baseChatOptions: LLMChatOptions = {
-      model: this.options.model,
-      tools: toolDefs.length > 0 ? toolDefs : undefined,
-      maxTokens: this.options.maxTokens,
-      temperature: this.options.temperature,
-      systemPrompt: this.options.systemPrompt,
-      abortSignal: this.options.abortSignal,
-    }
+    // Extract latest user text for intent classification
+    const lastUserMsg = [...conversationMessages]
+      .reverse()
+      .find(m => m.role === 'user')
+    const lastUserText = lastUserMsg
+      ? lastUserMsg.content
+          .filter((b): b is TextBlock => b.type === 'text')
+          .map(b => b.text)
+          .join('')
+      : ''
+    const intent = classifyIntent(lastUserText)
 
     try {
       while (true) {
@@ -138,13 +146,29 @@ export class AgentRunner {
 
         turns++
 
+        // Dynamic tool injection:
+        // Turn 1 uses intent-filtered tools (may be empty for chat).
+        // Turns 2+ (model is mid-agentic-loop after tool results) get full tools.
+        const turnTools: LLMToolDef[] = turns === 1
+          ? filterToolsByIntent(intent, fullToolDefs)
+          : fullToolDefs
+
+        const turnChatOptions: LLMChatOptions = {
+          model: this.options.model,
+          tools: turnTools.length > 0 ? turnTools : undefined,
+          maxTokens: this.options.maxTokens,
+          temperature: this.options.temperature,
+          systemPrompt: this.options.systemPrompt,
+          abortSignal: this.options.abortSignal,
+        }
+
         // Step 1: Stream from LLM — yield text tokens in real-time
         const turnContent: ContentBlock[] = []
         let turnText = ''
         const pendingToolUse: ToolUseBlock[] = []
         let turnUsage: TokenUsage = ZERO_USAGE
 
-        for await (const event of this.adapter.stream(conversationMessages, baseChatOptions)) {
+        for await (const event of this.adapter.stream(conversationMessages, turnChatOptions)) {
           if (event.type === 'text') {
             const chunk = event.data as string
             turnText += chunk
@@ -200,6 +224,34 @@ export class AgentRunner {
 
         const executionPromises = pendingToolUse.map(async (block) => {
           callbacks.onToolCall?.(block.name, block.input)
+
+          // --- HITL gate: check permissions before executing ---
+          if (this.permissionManager && callbacks.onToolApproval) {
+            const decision = await this.permissionManager.gate(
+              block.name,
+              block.input,
+              callbacks.onToolApproval,
+            )
+            if (decision === 'deny') {
+              const deniedResult: ToolResult = {
+                data: `Tool "${block.name}" was denied by the user.`,
+                isError: true,
+              }
+              callbacks.onToolResult?.(block.name, deniedResult)
+              const resultBlock: ToolResultBlock = {
+                type: 'tool_result',
+                tool_use_id: block.id,
+                content: deniedResult.data,
+                is_error: true,
+              }
+              return { resultBlock, record: {
+                toolName: block.name,
+                input: block.input,
+                output: deniedResult.data,
+                duration: 0,
+              } as ToolCallRecord }
+            }
+          }
 
           const startTime = Date.now()
           let result: ToolResult

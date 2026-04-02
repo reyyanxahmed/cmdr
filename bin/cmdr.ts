@@ -34,6 +34,9 @@ async function main(): Promise<void> {
       model,
       ollamaUrl,
       initialPrompt: args.prompt,
+      dangerouslySkipPermissions: args.dangerouslySkipPermissions,
+      resume: args.resume,
+      verbose: args.verbose,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

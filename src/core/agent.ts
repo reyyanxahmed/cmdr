@@ -11,6 +11,7 @@ import type {
 import { AgentRunner, type RunCallbacks, type RunResult } from './agent-runner.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { ToolExecutor } from '../tools/executor.js'
+import type { PermissionManager } from './permissions.js'
 
 const ZERO_USAGE: TokenUsage = { input_tokens: 0, output_tokens: 0 }
 
@@ -19,6 +20,7 @@ export class Agent {
   private readonly adapter: LLMAdapter
   private readonly toolRegistry: ToolRegistry
   private readonly toolExecutor: ToolExecutor
+  private readonly permissionManager?: PermissionManager
   private state: AgentState
   private cwd: string
 
@@ -27,11 +29,13 @@ export class Agent {
     adapter: LLMAdapter,
     toolRegistry: ToolRegistry,
     cwd?: string,
+    permissionManager?: PermissionManager,
   ) {
     this.config = config
     this.adapter = adapter
     this.toolRegistry = toolRegistry
     this.toolExecutor = new ToolExecutor(toolRegistry)
+    this.permissionManager = permissionManager
     this.cwd = cwd ?? process.cwd()
     this.state = {
       status: 'idle',
@@ -132,6 +136,11 @@ export class Agent {
     this.state = { status: 'idle', messages: [], tokenUsage: ZERO_USAGE }
   }
 
+  /** Replace internal message history (used after compaction). */
+  replaceMessages(messages: LLMMessage[]): void {
+    this.state.messages = [...messages]
+  }
+
   setCwd(cwd: string): void {
     this.cwd = cwd
   }
@@ -147,7 +156,7 @@ export class Agent {
       agentName: this.config.name,
       agentRole: 'assistant',
       cwd: this.cwd,
-    })
+    }, this.permissionManager)
   }
 
   private toAgentResult(result: RunResult): AgentRunResult {

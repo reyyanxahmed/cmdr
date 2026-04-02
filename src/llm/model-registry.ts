@@ -14,6 +14,7 @@ const KNOWN_MODELS: ModelInfo[] = [
   { name: 'qwen2.5-coder:7b', contextLength: 32768, supportsTools: true, parameterSize: '7B', recommended: 'lightweight' },
   { name: 'qwen2.5-coder:14b', contextLength: 32768, supportsTools: true, parameterSize: '14B', recommended: 'midrange' },
   { name: 'qwen2.5-coder:32b', contextLength: 32768, supportsTools: true, parameterSize: '32B', recommended: 'heavy' },
+  { name: 'qwen3-coder:latest', contextLength: 65536, supportsTools: true, parameterSize: '30.5B', recommended: 'heavy' },
   { name: 'qwen2.5:7b', contextLength: 32768, supportsTools: true, parameterSize: '7B', recommended: 'lightweight' },
   { name: 'qwen2.5:14b', contextLength: 32768, supportsTools: true, parameterSize: '14B', recommended: 'midrange' },
   { name: 'qwen2.5:32b', contextLength: 32768, supportsTools: true, parameterSize: '32B', recommended: 'heavy' },
