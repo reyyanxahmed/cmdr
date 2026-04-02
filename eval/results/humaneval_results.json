@@ -1,0 +1,45 @@
+{
+  "benchmark": "humaneval",
+  "model": "qwen3-coder:latest",
+  "timestamp": "2026-04-02T12:45:19.330Z",
+  "total": 5,
+  "passed": 5,
+  "pass@1": 1,
+  "results": [
+    {
+      "task_id": "HumanEval/0",
+      "passed": true,
+      "duration_ms": 3426,
+      "raw_output": "```python\ndef has_close_elements(numbers: List[float], threshold: float) -> bool:\n    \"\"\"Check if in given list of numbers, are any two numbers closer to each\n    other than given threshold.\n    >>> has_close_elements([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.3)\n    True\n    >>> has_close_elements([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.05)\n    False\n    \"\"\"\n    for i in range(len(numbers)):\n        for j in range(i + 1, len(numbers)):\n            if abs(numbers[i] - numbers[j]) < threshold:\n                return True\n    return False\n```",
+      "extracted_code": "def has_close_elements(numbers: List[float], threshold: float) -> bool:\n    \"\"\"Check if in given list of numbers, are any two numbers closer to each\n    other than given threshold.\n    >>> has_close_elements([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.3)\n    True\n    >>> has_close_elements([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.05)\n    False\n    \"\"\"\n    for i in range(len(numbers)):\n        for j in range(i + 1, len(numbers)):\n            if abs(numbers[i] - numbers[j]) < threshold:\n                return True\n    return False"
+    },
+    {
+      "task_id": "HumanEval/1",
+      "passed": true,
+      "duration_ms": 2477,
+      "raw_output": "```python\ndef separate_paren_groups(paren_string: str) -> List[str]:\n    # Remove all spaces from the input string\n    paren_string = paren_string.replace(' ', '')\n    \n    result = []\n    current_group = \"\"\n    balance = 0\n    \n    for char in paren_string:\n        current_group += char\n        if char == '(':\n            balance += 1\n        elif char == ')':\n            balance -= 1\n        \n        # When balance reaches 0, we have a complete group\n        if balance == 0:\n            result.append(current_group)\n            current_group = \"\"\n    \n    return result\n```",
+      "extracted_code": "def separate_paren_groups(paren_string: str) -> List[str]:\n    # Remove all spaces from the input string\n    paren_string = paren_string.replace(' ', '')\n    \n    result = []\n    current_group = \"\"\n    balance = 0\n    \n    for char in paren_string:\n        current_group += char\n        if char == '(':\n            balance += 1\n        elif char == ')':\n            balance -= 1\n        \n        # When balance reaches 0, we have a complete group\n        if balance == 0:\n            result.append(current_group)\n            current_group = \"\"\n    \n    return result"
+    },
+    {
+      "task_id": "HumanEval/2",
+      "passed": true,
+      "duration_ms": 1804,
+      "raw_output": "```python\ndef truncate_number(number: float) -> float:\n    \"\"\"Given a positive floating point number, it can be decomposed into an\n    integer part (largest integer smaller than given number) and decimals\n    (leftover part always smaller than 1). Return the decimal part of the\n    number.\n    >>> truncate_number(3.5)\n    0.5\n    \"\"\"\n    return number - int(number)\n```",
+      "extracted_code": "def truncate_number(number: float) -> float:\n    \"\"\"Given a positive floating point number, it can be decomposed into an\n    integer part (largest integer smaller than given number) and decimals\n    (leftover part always smaller than 1). Return the decimal part of the\n    number.\n    >>> truncate_number(3.5)\n    0.5\n    \"\"\"\n    return number - int(number)"
+    },
+    {
+      "task_id": "HumanEval/3",
+      "passed": true,
+      "duration_ms": 1220,
+      "raw_output": "```python\ndef below_zero(operations: List[int]) -> bool:\n    balance = 0\n    for operation in operations:\n        balance += operation\n        if balance < 0:\n            return True\n    return False\n```",
+      "extracted_code": "def below_zero(operations: List[int]) -> bool:\n    balance = 0\n    for operation in operations:\n        balance += operation\n        if balance < 0:\n            return True\n    return False"
+    },
+    {
+      "task_id": "HumanEval/4",
+      "passed": true,
+      "duration_ms": 3108,
+      "raw_output": "```python\nfrom typing import List\n\n\ndef mean_absolute_deviation(numbers: List[float]) -> float:\n    \"\"\"For a given list of input numbers, calculate Mean Absolute Deviation\n    around the mean of this dataset. Mean Absolute Deviation is the average\n    absolute difference between each element and a centerpoint (mean in this\n    case):\n    MAD = average | x - x_mean |\n    >>> mean_absolute_deviation([1.0, 2.0, 3.0, 4.0])\n    1.0\n    \"\"\"\n    if not numbers:\n        return 0.0\n    \n    mean = sum(numbers) / len(numbers)\n    absolute_deviations = [abs(x - mean) for x in numbers]\n    return sum(absolute_deviations) / len(absolute_deviations)\n```",
+      "extracted_code": "from typing import List\n\n\ndef mean_absolute_deviation(numbers: List[float]) -> float:\n    \"\"\"For a given list of input numbers, calculate Mean Absolute Deviation\n    around the mean of this dataset. Mean Absolute Deviation is the average\n    absolute difference between each element and a centerpoint (mean in this\n    case):\n    MAD = average | x - x_mean |\n    >>> mean_absolute_deviation([1.0, 2.0, 3.0, 4.0])\n    1.0\n    \"\"\"\n    if not numbers:\n        return 0.0\n    \n    mean = sum(numbers) / len(numbers)\n    absolute_deviations = [abs(x - mean) for x in numbers]\n    return sum(absolute_deviations) / len(absolute_deviations)"
+    }
+  ]
+}

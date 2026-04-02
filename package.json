@@ -10,6 +10,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "postbuild": "chmod +x dist/bin/cmdr.js",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
