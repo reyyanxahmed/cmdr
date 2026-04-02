@@ -88,7 +88,7 @@ export function printHelp(): void {
     cmdr [options] [prompt]
 
   Options:
-    -m, --model <name>       Set the Ollama model (default: qwen2.5-coder:14b)
+    -m, --model <name>       Set the Ollama model (auto-detects if omitted)
     -u, --ollama-url <url>   Ollama server URL (default: http://localhost:11434)
     -p, --prompt <text>      Run a single prompt and exit
     -r, --resume <id>        Resume a previous session

@@ -110,10 +110,10 @@ ${GREEN_DIM('   ╚═════╝╚═╝     ╚═╝╚═════�
   return art
 }
 
-export function renderWelcome(model: string, projectInfo: string): string {
+export function renderWelcome(model: string, projectInfo: string, version = '0.0.0'): string {
   const lines = [
     renderBanner(),
-    `  ${PURPLE.bold('cmdr')} ${DIM('v0.1.0')} ${DIM('—')} ${WHITE('local-first multi-agent coding tool')}`,
+    `  ${PURPLE.bold('cmdr')} ${DIM(`v${version}`)} ${DIM('—')} ${WHITE('local-first multi-agent coding tool')}`,
     `  ${DIM('Model:')} ${GREEN(model)}  ${DIM('Project:')} ${CYAN(projectInfo)}`,
     '',
     `  ${DIM('Type a message to start coding. Use')} ${commandText('/help')} ${DIM('for commands.')}`,
