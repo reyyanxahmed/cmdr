@@ -10,6 +10,7 @@ import {
 import { getDefaultContextLength } from '../llm/model-registry.js'
 import { countTokens } from '../llm/token-counter.js'
 import { listSessions } from '../session/session-persistence.js'
+import { listTeamPresets } from '../core/presets.js'
 import { writeFile, mkdir, stat } from 'fs/promises'
 import { join } from 'path'
 
@@ -336,6 +337,43 @@ registerCommand({
     }
 
     return renderInfo('Usage: /session [save|resume <id>|list]')
+  },
+})
+
+registerCommand({
+  name: 'team',
+  description: 'Switch to team mode (review, fullstack, security)',
+  execute: async (args) => {
+    if (!args) {
+      const presets = listTeamPresets()
+      const lines = [
+        '',
+        `  ${PURPLE.bold('Team presets')}`,
+        '',
+        ...presets.map(p => `  ${GREEN('•')} ${WHITE(p)}`),
+        '',
+        `  ${DIM('Usage: /team <preset>  or  cmdr --team <preset>')}`,
+        '',
+      ]
+      return lines.join('\n')
+    }
+    return `__TEAM_SWITCH__:${args.trim()}`
+  },
+})
+
+registerCommand({
+  name: 'agents',
+  description: 'Show active agents and their status',
+  execute: async () => {
+    return '__AGENTS_STATUS__'
+  },
+})
+
+registerCommand({
+  name: 'tasks',
+  description: 'Show task queue status',
+  execute: async () => {
+    return '__TASKS_STATUS__'
   },
 })
 

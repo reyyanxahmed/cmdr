@@ -45,6 +45,7 @@ async function main(): Promise<void> {
       resume: args.resume,
       continue: args.continue,
       verbose: args.verbose,
+      team: args.team,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
