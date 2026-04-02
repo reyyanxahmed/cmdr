@@ -12,6 +12,7 @@ export interface CliArgs {
   resume?: string
   continue?: boolean
   verbose?: boolean
+  cwd?: string
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -53,6 +54,9 @@ export function parseArgs(argv: string[]): CliArgs {
       case '-c':
         args.continue = true
         break
+      case '--cwd':
+        args.cwd = argv[++i]
+        break
       case '--verbose':
         args.verbose = true
         break
@@ -84,6 +88,7 @@ export function printHelp(): void {
     -p, --prompt <text>      Run a single prompt and exit
     -r, --resume <id>        Resume a previous session
     -c, --continue           Resume most recent session for this directory
+    --cwd <path>             Set working directory
     --verbose                Print full tool output (default: collapsed)
     -h, --help               Show this help
     -v, --version            Show version

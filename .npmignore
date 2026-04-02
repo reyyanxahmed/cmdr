@@ -1,0 +1,11 @@
+src/
+bin/
+evals/
+tests/
+*.ts
+tsconfig.json
+.github/
+.gitignore
+CONTRIBUTING.md
+CMDR.md
+.cmdr/

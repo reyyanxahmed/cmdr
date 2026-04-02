@@ -15,6 +15,8 @@
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
     "start": "node dist/bin/cmdr.js",
+    "eval": "npx tsx evals/run-evals.ts",
+    "eval:report": "npx tsx evals/report.ts",
     "prepublishOnly": "npm run build"
   },
   "engines": {

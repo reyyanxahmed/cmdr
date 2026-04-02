@@ -29,6 +29,13 @@ async function main(): Promise<void> {
   const model = args.model ?? process.env.CMDR_MODEL ?? 'qwen2.5-coder:14b'
   const ollamaUrl = args.ollamaUrl ?? process.env.CMDR_OLLAMA_URL ?? 'http://localhost:11434'
 
+  // Override working directory if --cwd is specified
+  if (args.cwd) {
+    const { resolve } = await import('path')
+    const target = resolve(args.cwd)
+    process.chdir(target)
+  }
+
   try {
     await startRepl({
       model,
