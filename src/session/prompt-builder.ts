@@ -36,7 +36,7 @@ export function buildSystemPrompt(options: PromptBuildOptions): string {
 
   // Inject CMDR.md workspace instructions
   if (ctx.cmdrInstructions) {
-    parts.push(`\n\n<workspace_instructions>\n${ctx.cmdrInstructions}\n</workspace_instructions>`)
+    parts.push(`\n\n<project_instructions>\nThe user has provided the following instructions for this project. Follow them unless they conflict with safety:\n\n${ctx.cmdrInstructions}\n</project_instructions>`)
   }
 
   return parts.join('')
