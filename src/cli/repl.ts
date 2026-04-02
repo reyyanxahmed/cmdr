@@ -220,6 +220,36 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     terminal: true,
   })
 
+  // Prevent unhandled errors from crashing the REPL
+  process.on('uncaughtException', (err) => {
+    console.error(renderError(`Uncaught: ${err.message}`))
+  })
+  process.on('unhandledRejection', (reason) => {
+    const msg = reason instanceof Error ? reason.message : String(reason)
+    console.error(renderError(`Unhandled: ${msg}`))
+  })
+
+  // Ctrl+C clears current line instead of exiting; double Ctrl+C exits
+  let lastSigint = 0
+  rl.on('SIGINT', () => {
+    const now = Date.now()
+    if (now - lastSigint < 500) {
+      // Double Ctrl+C — exit
+      rl.close()
+      return
+    }
+    lastSigint = now
+    if (processing) {
+      console.log(`\n  ${DIM('Interrupt — waiting for current operation to finish...')}`)
+      console.log(`  ${DIM('Press Ctrl+C again to force exit.')}`)
+    } else {
+      // Clear line and re-prompt
+      rl.write('', { ctrl: true, name: 'u' })
+      console.log('')
+      rl.prompt()
+    }
+  })
+
   rl.prompt()
 
   // --- Paste detection ---
