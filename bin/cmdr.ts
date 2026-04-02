@@ -9,24 +9,43 @@
 
 import { parseArgs, printHelp } from '../src/cli/args.js'
 import { startRepl } from '../src/cli/repl.js'
-import { GREEN, PURPLE, DIM, renderError } from '../src/cli/theme.js'
+import { GREEN, PURPLE, DIM, renderError, WHITE, CYAN } from '../src/cli/theme.js'
 import { OllamaAdapter } from '../src/llm/ollama.js'
+import * as readline from 'readline'
 
-const VERSION = '1.0.1'
+const VERSION = '1.0.2'
 
-/** Pick the best model from available Ollama models. Prefer "coder" variants, then larger sizes. */
-function pickBestModel(models: string[]): string {
-  const scored = models.map((name) => {
-    let score = 0
-    const lower = name.toLowerCase()
-    if (lower.includes('coder')) score += 100
-    // Prefer larger parameter sizes
-    const sizeMatch = lower.match(/(\d+)[bB]/)
-    if (sizeMatch) score += parseInt(sizeMatch[1], 10)
-    return { name, score }
+/** Prompt user to pick a model from the list. */
+function promptModelSelection(models: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    console.log('')
+    console.log(`  ${PURPLE.bold('Available models')}`)
+    console.log('')
+    for (let i = 0; i < models.length; i++) {
+      const label = models[i].toLowerCase().includes('coder')
+        ? `${WHITE(models[i])} ${DIM('(recommended)')}`
+        : WHITE(models[i])
+      console.log(`  ${GREEN(`${i + 1}.`)} ${label}`)
+    }
+    console.log('')
+
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      terminal: true,
+    })
+    rl.question(`  ${CYAN('Select model')} ${DIM(`[1-${models.length}]`)}: `, (answer) => {
+      rl.close()
+      const idx = parseInt(answer.trim(), 10) - 1
+      if (idx >= 0 && idx < models.length) {
+        resolve(models[idx])
+      } else {
+        // Default to first model on invalid input
+        console.log(`  ${DIM('Invalid selection, using:')} ${GREEN(models[0])}`)
+        resolve(models[0])
+      }
+    })
   })
-  scored.sort((a, b) => b.score - a.score)
-  return scored[0].name
 }
 
 async function main(): Promise<void> {
@@ -57,8 +76,7 @@ async function main(): Promise<void> {
         ))
         process.exit(1)
       }
-      model = pickBestModel(models)
-      console.log(`  ${DIM('Auto-detected model:')} ${GREEN(model)}`)
+      model = await promptModelSelection(models)
     } catch {
       console.error(renderError(
         `Cannot connect to Ollama at ${ollamaUrl}\n` +

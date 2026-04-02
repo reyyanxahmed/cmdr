@@ -91,7 +91,7 @@ registerCommand({
 
 registerCommand({
   name: 'models',
-  description: 'List available Ollama models',
+  description: 'List available Ollama models and switch',
   execute: async (_args, context) => {
     try {
       const adapter = context.adapter as any
@@ -106,10 +106,35 @@ registerCommand({
         '',
         `  ${PURPLE.bold('Available models')}`,
         '',
-        ...models.map((m: string) => `  ${GREEN('•')} ${WHITE(m)}`),
+        ...models.map((m: string, i: number) => {
+          const current = m === context.model ? ` ${DIM('← current')}` : ''
+          return `  ${GREEN(`${i + 1}.`)} ${WHITE(m)}${current}`
+        }),
         '',
+        `  ${DIM('Type a number to switch, or press Enter to cancel.')}`,
       ]
-      return lines.join('\n')
+      console.log(lines.join('\n'))
+
+      // Interactive selection
+      const readline = await import('readline')
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        terminal: true,
+      })
+      const answer = await new Promise<string>((resolve) => {
+        rl.question(`  ${CYAN('Select model')} ${DIM(`[1-${models.length}]`)}: `, (ans: string) => {
+          rl.close()
+          resolve(ans.trim())
+        })
+      })
+      if (!answer) return ''
+      const idx = parseInt(answer, 10) - 1
+      if (idx >= 0 && idx < models.length) {
+        context.switchModel(models[idx])
+        return renderInfo(`Switched to model: ${GREEN(models[idx])}`)
+      }
+      return ''
     } catch {
       return `  ${DIM('Could not connect to Ollama. Is it running?')}`
     }
