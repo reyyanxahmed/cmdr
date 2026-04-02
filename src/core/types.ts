@@ -1,0 +1,329 @@
+/**
+ * Core type definitions for cmdr.
+ *
+ * All public types are defined here to keep the dependency graph acyclic.
+ */
+
+import type { ZodSchema } from 'zod'
+
+// ---------------------------------------------------------------------------
+// Content blocks
+// ---------------------------------------------------------------------------
+
+export interface TextBlock {
+  readonly type: 'text'
+  readonly text: string
+}
+
+export interface ToolUseBlock {
+  readonly type: 'tool_use'
+  readonly id: string
+  readonly name: string
+  readonly input: Record<string, unknown>
+}
+
+export interface ToolResultBlock {
+  readonly type: 'tool_result'
+  readonly tool_use_id: string
+  readonly content: string
+  readonly is_error?: boolean
+}
+
+export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock
+
+// ---------------------------------------------------------------------------
+// LLM messages & responses
+// ---------------------------------------------------------------------------
+
+export interface LLMMessage {
+  readonly role: 'user' | 'assistant'
+  readonly content: ContentBlock[]
+}
+
+export interface TokenUsage {
+  readonly input_tokens: number
+  readonly output_tokens: number
+}
+
+export interface LLMResponse {
+  readonly id: string
+  readonly content: ContentBlock[]
+  readonly model: string
+  readonly stop_reason: string
+  readonly usage: TokenUsage
+}
+
+// ---------------------------------------------------------------------------
+// Streaming
+// ---------------------------------------------------------------------------
+
+export interface StreamEvent {
+  readonly type: 'text' | 'tool_use' | 'tool_result' | 'done' | 'error'
+  readonly data: unknown
+}
+
+// ---------------------------------------------------------------------------
+// Tool definitions
+// ---------------------------------------------------------------------------
+
+export interface LLMToolDef {
+  readonly name: string
+  readonly description: string
+  readonly inputSchema: Record<string, unknown>
+}
+
+export interface ToolUseContext {
+  readonly agent: AgentInfo
+  readonly team?: TeamInfo
+  readonly abortSignal?: AbortSignal
+  readonly abortController?: AbortController
+  readonly cwd?: string
+  readonly metadata?: Readonly<Record<string, unknown>>
+}
+
+export interface AgentInfo {
+  readonly name: string
+  readonly role: string
+  readonly model: string
+}
+
+export interface TeamInfo {
+  readonly name: string
+  readonly agents: readonly string[]
+  readonly sharedMemory: MemoryStore
+}
+
+export interface ToolResult {
+  readonly data: string
+  readonly isError?: boolean
+}
+
+export interface ToolDefinition<TInput = Record<string, unknown>> {
+  readonly name: string
+  readonly description: string
+  readonly inputSchema: ZodSchema<TInput>
+  execute(input: TInput, context: ToolUseContext): Promise<ToolResult>
+}
+
+// ---------------------------------------------------------------------------
+// Agent
+// ---------------------------------------------------------------------------
+
+export interface AgentConfig {
+  readonly name: string
+  readonly model?: string
+  readonly provider?: 'ollama' | 'openai' | 'anthropic'
+  readonly systemPrompt?: string
+  readonly tools?: readonly string[]
+  readonly maxTurns?: number
+  readonly maxTokens?: number
+  readonly temperature?: number
+}
+
+export interface AgentState {
+  status: 'idle' | 'running' | 'completed' | 'error'
+  messages: LLMMessage[]
+  tokenUsage: TokenUsage
+  error?: Error
+}
+
+export interface ToolCallRecord {
+  readonly toolName: string
+  readonly input: Record<string, unknown>
+  readonly output: string
+  readonly duration: number
+}
+
+export interface AgentRunResult {
+  readonly success: boolean
+  readonly output: string
+  readonly messages: LLMMessage[]
+  readonly tokenUsage: TokenUsage
+  readonly toolCalls: ToolCallRecord[]
+}
+
+// ---------------------------------------------------------------------------
+// Team
+// ---------------------------------------------------------------------------
+
+export interface TeamConfig {
+  readonly name: string
+  readonly agents: readonly AgentConfig[]
+  readonly sharedMemory?: boolean
+  readonly maxConcurrency?: number
+  readonly schedulingStrategy?: 'round-robin' | 'least-busy' | 'capability-match' | 'dependency-first'
+}
+
+export interface TeamRunResult {
+  readonly success: boolean
+  readonly agentResults: Map<string, AgentRunResult>
+  readonly totalTokenUsage: TokenUsage
+}
+
+// ---------------------------------------------------------------------------
+// Task
+// ---------------------------------------------------------------------------
+
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'blocked'
+
+export interface Task {
+  readonly id: string
+  readonly title: string
+  readonly description: string
+  status: TaskStatus
+  assignee?: string
+  dependsOn?: readonly string[]
+  result?: string
+  readonly createdAt: Date
+  updatedAt: Date
+}
+
+// ---------------------------------------------------------------------------
+// Session
+// ---------------------------------------------------------------------------
+
+export interface SessionState {
+  id: string
+  messages: LLMMessage[]
+  tokenCount: number
+  maxContextTokens: number
+  projectContext: ProjectContext
+  createdAt: Date
+  lastActivity: Date
+}
+
+export interface ProjectContext {
+  rootDir: string
+  language: string
+  framework?: string
+  packageManager?: string
+  gitBranch?: string
+  relevantFiles: string[]
+}
+
+// ---------------------------------------------------------------------------
+// Plugin
+// ---------------------------------------------------------------------------
+
+export interface CmdrPlugin {
+  name: string
+  version: string
+  hooks?: {
+    beforePrompt?: (params: LLMChatOptions) => LLMChatOptions | Promise<LLMChatOptions>
+    afterResponse?: (result: LLMResponse) => LLMResponse | Promise<LLMResponse>
+    beforeToolExec?: (tool: string, input: unknown) => unknown | Promise<unknown>
+    afterToolExec?: (tool: string, result: ToolResult) => ToolResult | Promise<ToolResult>
+    onError?: (error: Error) => void | Promise<void>
+    onSessionStart?: (session: SessionState) => void | Promise<void>
+    onSessionEnd?: (session: SessionState) => void | Promise<void>
+  }
+  tools?: ToolDefinition[]
+  commands?: SlashCommand[]
+}
+
+export interface SlashCommand {
+  name: string
+  description: string
+  execute: (args: string, context: CommandContext) => Promise<string | void>
+}
+
+export interface CommandContext {
+  session: SessionState
+  switchModel: (model: string) => void
+  clearHistory: () => void
+  ollamaUrl: string
+  adapter: LLMAdapter
+}
+
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
+
+export interface CmdrConfig {
+  ollamaUrl: string
+  defaultModel: string
+  defaultProvider: 'ollama' | 'openai' | 'anthropic'
+  maxConcurrency: number
+  contextBudget: number
+  autoCompact: boolean
+  permissions: {
+    allowBash: boolean
+    allowFileWrite: boolean
+    allowNetwork: boolean
+    sandboxDir?: string
+  }
+  mcp: {
+    servers: McpServerConfig[]
+  }
+  plugins: string[]
+}
+
+export interface McpServerConfig {
+  name: string
+  url: string
+  apiKey?: string
+}
+
+// ---------------------------------------------------------------------------
+// Memory
+// ---------------------------------------------------------------------------
+
+export interface MemoryEntry {
+  readonly key: string
+  readonly value: string
+  readonly metadata?: Readonly<Record<string, unknown>>
+  readonly createdAt: Date
+}
+
+export interface MemoryStore {
+  get(key: string): Promise<MemoryEntry | null>
+  set(key: string, value: string, metadata?: Record<string, unknown>): Promise<void>
+  list(): Promise<MemoryEntry[]>
+  delete(key: string): Promise<void>
+  clear(): Promise<void>
+}
+
+// ---------------------------------------------------------------------------
+// LLM adapter
+// ---------------------------------------------------------------------------
+
+export interface LLMChatOptions {
+  readonly model: string
+  readonly tools?: readonly LLMToolDef[]
+  readonly maxTokens?: number
+  readonly temperature?: number
+  readonly systemPrompt?: string
+  readonly abortSignal?: AbortSignal
+}
+
+export interface LLMStreamOptions extends LLMChatOptions {}
+
+export interface LLMAdapter {
+  readonly name: string
+  chat(messages: LLMMessage[], options: LLMChatOptions): Promise<LLMResponse>
+  stream(messages: LLMMessage[], options: LLMStreamOptions): AsyncIterable<StreamEvent>
+}
+
+// ---------------------------------------------------------------------------
+// Orchestrator
+// ---------------------------------------------------------------------------
+
+export interface OrchestratorEvent {
+  readonly type:
+    | 'agent_start'
+    | 'agent_complete'
+    | 'task_start'
+    | 'task_complete'
+    | 'message'
+    | 'error'
+  readonly agent?: string
+  readonly task?: string
+  readonly data?: unknown
+}
+
+export interface OrchestratorConfig {
+  readonly maxConcurrency?: number
+  readonly defaultModel?: string
+  readonly defaultProvider?: 'ollama' | 'openai' | 'anthropic'
+  onProgress?: (event: OrchestratorEvent) => void
+}
