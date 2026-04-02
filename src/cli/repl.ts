@@ -153,6 +153,13 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     permissionManager,
   )
 
+  // --- Alternate screen buffer (terminal takeover) for interactive mode ---
+  const useAltScreen = (process.stdout.isTTY ?? false) && !options.initialPrompt
+  if (useAltScreen) {
+    process.stdout.write('\x1b[?1049h') // enter alt screen
+    process.stdout.write('\x1b[H')       // move cursor to top-left
+  }
+
   // --- Welcome ---
   const modeLabel = permissionManager.getMode() === 'yolo'
     ? YELLOW('⚠ yolo (all tools auto-approved)')
@@ -213,6 +220,35 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   }
 
   // --- Interactive REPL ---
+
+  // --- Centralized cleanup (runs exactly once) ---
+  let cleanedUp = false
+  async function cleanup(_reason: string): Promise<void> {
+    if (cleanedUp) return
+    cleanedUp = true
+
+    autoSaver.cancel()
+    session.syncFromAgent(agent.getHistory())
+    if (session.messages.length > 0) {
+      try {
+        const sid = await saveSession(session.getState(), currentModel)
+        // Leave alt screen BEFORE printing goodbye so user can see it
+        if (useAltScreen) {
+          process.stdout.write('\x1b[?1049l')
+        }
+        console.log(`\n  ${DIM('Session saved:')} ${DIM(sid)}`)
+      } catch {
+        // best effort — still leave alt screen
+        if (useAltScreen) {
+          process.stdout.write('\x1b[?1049l')
+        }
+      }
+    } else if (useAltScreen) {
+      process.stdout.write('\x1b[?1049l')
+    }
+    console.log(`\n  ${PURPLE('Goodbye.')} ${DIM('Session ended.')}\n`)
+  }
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -235,7 +271,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     const now = Date.now()
     if (now - lastSigint < 500) {
       // Double Ctrl+C — exit
-      rl.close()
+      cleanup('double-sigint').finally(() => process.exit(0))
       return
     }
     lastSigint = now
@@ -244,9 +280,22 @@ export async function startRepl(options: ReplOptions): Promise<void> {
       console.log(`  ${DIM('Press Ctrl+C again to force exit.')}`)
     } else {
       // Clear line and re-prompt
-      rl.write('', { ctrl: true, name: 'u' })
       console.log('')
       rl.prompt()
+    }
+  })
+
+  // Catch SIGTERM/SIGHUP (terminal closed, etc.)
+  for (const sig of ['SIGTERM', 'SIGHUP'] as const) {
+    process.on(sig, () => {
+      cleanup(sig).finally(() => process.exit(0))
+    })
+  }
+
+  // Before-exit guard: ensure alt screen is left even on unexpected exits
+  process.on('exit', () => {
+    if (useAltScreen && !cleanedUp) {
+      process.stdout.write('\x1b[?1049l')
     }
   })
 
@@ -272,7 +321,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     } finally {
       processing = false
       if (closed) {
-        process.exit(0)
+        cleanup('deferred-close').finally(() => process.exit(0))
       } else {
         rl.prompt()
       }
@@ -327,16 +376,8 @@ export async function startRepl(options: ReplOptions): Promise<void> {
       })
 
       if (result === '__QUIT__') {
-        autoSaver.cancel()
-        session.syncFromAgent(agent.getHistory())
-        if (session.messages.length > 0) {
-          const sid = await saveSession(session.getState(), currentModel)
-          console.log(`\n  ${DIM('Session saved:')} ${DIM(sid)}`)
-        }
-        console.log(`\n  ${PURPLE('Goodbye.')} ${DIM('Session ended.')}\n`)
-        closed = true
-        rl.close()
-        return
+        await cleanup('quit-command')
+        process.exit(0)
       }
 
       if (result === '__COMPACT__') {
@@ -550,25 +591,13 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     pasteTimer = setTimeout(flushPasteBuffer, PASTE_THRESHOLD_MS)
   })
 
-  rl.on('close', async () => {
-    autoSaver.cancel()
-    if (!closed) {
-      session.syncFromAgent(agent.getHistory())
-      if (session.messages.length > 0) {
-        try {
-          const sid = await saveSession(session.getState(), currentModel)
-          console.log(`\n  ${DIM('Session saved:')} ${DIM(sid)}`)
-        } catch {
-          // best effort
-        }
-      }
-      console.log(`\n  ${PURPLE('Goodbye.')} ${DIM('Session ended.')}\n`)
-    }
+  rl.on('close', () => {
     if (processing) {
+      // Still processing a command — defer exit until it finishes
       closed = true
-    } else {
-      process.exit(0)
+      return
     }
+    cleanup('close').finally(() => process.exit(0))
   })
 }
 
