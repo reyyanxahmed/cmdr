@@ -105,6 +105,12 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   console.log(renderWelcome(currentModel, projectInfo))
   console.log(`  ${DIM('Permissions:')} ${modeLabel}`)
 
+  // Show CMDR.md loading status
+  if (projectContext.cmdrInstructions) {
+    const lineCount = projectContext.cmdrInstructions.split('\n').length
+    console.log(`  ${DIM(`CMDR.md loaded (${lineCount} lines)`)}`)
+  }
+
   // --- Resume session if requested ---
   if (options.resume) {
     const saved = await loadSession(options.resume)

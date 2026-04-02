@@ -74,14 +74,18 @@ export async function discoverProject(rootDir: string): Promise<ProjectContext> 
     }
   }
 
-  // CMDR.md workspace instructions
+  // CMDR.md workspace instructions (check both CMDR.md and .cmdr/instructions.md)
+  const instructionParts: string[] = []
   try {
     const cmdrMd = await readFile(join(rootDir, 'CMDR.md'), 'utf-8')
-    if (cmdrMd.trim()) {
-      context.cmdrInstructions = cmdrMd.trim()
-    }
-  } catch {
-    // no CMDR.md — that's fine
+    if (cmdrMd.trim()) instructionParts.push(cmdrMd.trim())
+  } catch { /* no CMDR.md */ }
+  try {
+    const dotCmdrMd = await readFile(join(rootDir, '.cmdr', 'instructions.md'), 'utf-8')
+    if (dotCmdrMd.trim()) instructionParts.push(dotCmdrMd.trim())
+  } catch { /* no .cmdr/instructions.md */ }
+  if (instructionParts.length > 0) {
+    context.cmdrInstructions = instructionParts.join('\n\n')
   }
 
   // Key files

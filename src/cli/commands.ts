@@ -183,27 +183,21 @@ registerCommand({
     try {
       await stat(cmdrMdPath)
     } catch {
-      const template = `# CMDR.md — Project Instructions
+      const template = `# CMDR Instructions
 
-<!-- cmdr reads this file on every session start. -->
-<!-- Add project-specific rules and context here. -->
+<!-- cmdr reads this file on every session start. Add project-specific rules here. -->
 
-## Build & Test
+## Project Overview
+<!-- Describe what this project does -->
 
-- Build: \`npm run build\`
-- Test: \`npm test\`
-- Lint: \`npm run lint\`
+## Code Style
+<!-- e.g., "Use bun instead of npm", "Prefer functional style", "Always add JSDoc comments" -->
 
-## Conventions
+## Testing
+<!-- e.g., "Run \`vitest\` after every change", "Tests are in __tests__/ directories" -->
 
-- Use TypeScript strict mode
-- Prefer ESM imports
-- Follow existing code patterns
-
-## Do NOT
-
-- Modify files in \`dist/\` or \`node_modules/\`
-- Commit generated files
+## Rules
+<!-- e.g., "Never modify files in /core without asking first", "Always run linting before committing" -->
 `
       await writeFile(cmdrMdPath, template, 'utf-8')
       created.push('CMDR.md')
