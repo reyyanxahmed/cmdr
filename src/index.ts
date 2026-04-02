@@ -7,17 +7,35 @@
 // Core
 export { Agent } from './core/agent.js'
 export { AgentRunner } from './core/agent-runner.js'
-export { SOLO_CODER, getPreset } from './core/presets.js'
+export { AgentPool } from './core/agent-pool.js'
+export { Team } from './core/team.js'
+export { Orchestrator } from './core/orchestrator.js'
+export {
+  SOLO_CODER, CODE_REVIEW_TEAM, FULL_STACK_TEAM, SECURITY_AUDIT_TEAM,
+  getPreset, getTeamPreset, listTeamPresets,
+} from './core/presets.js'
 export type {
   AgentConfig, AgentState, AgentRunResult,
   LLMAdapter, LLMMessage, LLMResponse, LLMChatOptions,
   StreamEvent, ContentBlock, TextBlock, ToolUseBlock, ToolResultBlock,
   TokenUsage, ToolCallRecord,
   ToolDefinition, ToolResult, ToolUseContext,
+  TeamConfig, TeamRunResult, Task, TaskStatus,
   SessionState, ProjectContext,
   CmdrPlugin, SlashCommand,
-  CmdrConfig,
+  CmdrConfig, OrchestratorConfig, OrchestratorEvent,
 } from './core/types.js'
+
+// Communication
+export { MessageBus } from './communication/message-bus.js'
+export type { BusMessage } from './communication/message-bus.js'
+export { SharedMemory } from './communication/shared-memory.js'
+export { TaskQueue } from './communication/task-queue.js'
+
+// Scheduling
+export { Semaphore } from './scheduling/semaphore.js'
+export { selectAgent } from './scheduling/strategies.js'
+export type { SchedulingStrategy } from './scheduling/strategies.js'
 
 // Tools
 export { defineTool, ToolRegistry, zodToJsonSchema } from './tools/registry.js'

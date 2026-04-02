@@ -11,7 +11,9 @@ import { Agent } from '../core/agent.js'
 import { OllamaAdapter } from '../llm/ollama.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { registerBuiltInTools } from '../tools/built-in/index.js'
-import { SOLO_CODER } from '../core/presets.js'
+import { SOLO_CODER, getTeamPreset } from '../core/presets.js'
+import { Orchestrator } from '../core/orchestrator.js'
+import type { TeamConfig, OrchestratorEvent } from '../core/types.js'
 import { SessionManager } from '../session/session-manager.js'
 import { discoverProject } from '../session/project-context.js'
 import { buildSystemPrompt } from '../session/prompt-builder.js'
@@ -37,6 +39,7 @@ export interface ReplOptions {
   resume?: string
   continue?: boolean
   verbose?: boolean
+  team?: string
 }
 
 export async function startRepl(options: ReplOptions): Promise<void> {
@@ -87,6 +90,20 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     permissionManager.setMode('yolo')
   }
 
+  // Orchestrator for team mode
+  const orchestrator = new Orchestrator(adapter, toolRegistry, {
+    maxConcurrency: 2,
+    defaultModel: options.model,
+  }, cwd, permissionManager)
+  let activeTeamConfig: TeamConfig | undefined
+  if (options.team) {
+    activeTeamConfig = getTeamPreset(options.team)
+    if (!activeTeamConfig) {
+      console.error(renderError(`Unknown team preset: ${options.team}. Use: review, fullstack, security`))
+      process.exit(1)
+    }
+  }
+
   // Create agent
   let currentModel = options.model
   const agent = new Agent(
@@ -105,6 +122,11 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     : GREEN('normal (write tools require approval)')
   console.log(renderWelcome(currentModel, projectInfo))
   console.log(`  ${DIM('Permissions:')} ${modeLabel}`)
+
+  if (activeTeamConfig) {
+    const teamAgents = activeTeamConfig.agents.map(a => a.name).join(', ')
+    console.log(`  ${DIM('Team:')} ${PURPLE(activeTeamConfig.name)} ${DIM(`(${teamAgents})`)}`)
+  }
 
   // Show CMDR.md loading status
   if (projectContext.cmdrInstructions) {
@@ -294,14 +316,63 @@ export async function startRepl(options: ReplOptions): Promise<void> {
         return
       }
 
+      if (typeof result === 'string' && result.startsWith('__TEAM_SWITCH__:')) {
+        const preset = result.slice('__TEAM_SWITCH__:'.length)
+        const teamCfg = getTeamPreset(preset)
+        if (teamCfg) {
+          activeTeamConfig = teamCfg
+          const teamAgents = teamCfg.agents.map(a => a.name).join(', ')
+          console.log(renderInfo(`Switched to team: ${PURPLE(teamCfg.name)} (${teamAgents})`))
+        } else {
+          console.log(renderError(`Unknown team: ${preset}. Use: review, fullstack, security`))
+        }
+        return
+      }
+
+      if (result === '__AGENTS_STATUS__') {
+        if (!activeTeamConfig) {
+          console.log(renderInfo(`Solo mode (agent: ${GREEN('cmdr')}). Use /team <preset> for multi-agent.`))
+        } else {
+          const status = orchestrator.getStatus()
+          const lines = ['', `  ${PURPLE.bold(`Team: ${activeTeamConfig.name}`)}`, '']
+          for (const agentCfg of activeTeamConfig.agents) {
+            const agentStatus = status?.agents.find(a => a.name === agentCfg.name)
+            const statusLabel = agentStatus ? DIM(agentStatus.status) : DIM('idle')
+            lines.push(`  ${GREEN('•')} ${WHITE(agentCfg.name.padEnd(12))} ${statusLabel}`)
+          }
+          lines.push('')
+          console.log(lines.join('\n'))
+        }
+        return
+      }
+
+      if (result === '__TASKS_STATUS__') {
+        const status = orchestrator.getStatus()
+        if (!status) {
+          console.log(renderInfo('No active team or tasks.'))
+        } else {
+          const s = status.tasks
+          if (s) {
+            console.log(renderInfo(
+              `Tasks: ${GREEN(`${s.completed} done`)} · ${YELLOW(`${s.in_progress} running`)} · ${DIM(`${s.pending} pending`)} · ${s.failed > 0 ? RED(`${s.failed} failed`) : DIM('0 failed')}`,
+            ))
+          }
+        }
+        return
+      }
+
       if (result) console.log(result)
       return
     }
 
-    // Regular message
-    await handleUserMessage(input, agent, session, currentModel, permissionManager, verbose, adapter, () => {
-      autoSaver.schedule(doSave)
-    })
+    // Regular message — team mode or solo mode
+    if (activeTeamConfig) {
+      await handleTeamMessage(input, orchestrator, activeTeamConfig, currentModel, verbose)
+    } else {
+      await handleUserMessage(input, agent, session, currentModel, permissionManager, verbose, adapter, () => {
+        autoSaver.schedule(doSave)
+      })
+    }
   }
 
   rl.on('line', (line) => {
@@ -583,6 +654,68 @@ async function handleUserMessage(
 
   // Trigger debounced auto-save
   onAfterResponse?.()
+
+  console.log(GREEN_DIM('─'.repeat(60)))
+  console.log('')
+}
+
+// ---------------------------------------------------------------------------
+// Team message handler — runs goal through the orchestrator
+// ---------------------------------------------------------------------------
+
+async function handleTeamMessage(
+  goal: string,
+  orchestrator: Orchestrator,
+  teamConfig: TeamConfig,
+  model: string,
+  verbose: boolean,
+): Promise<void> {
+  console.log('')
+  console.log(`  ${PURPLE('◈')} Running team ${PURPLE.bold(teamConfig.name)} with ${teamConfig.agents.length} agents...`)
+  console.log('')
+
+  startThinking()
+
+  try {
+    const result = await orchestrator.runTeam(teamConfig, goal)
+    stopSpinner()
+
+    // Display results from each agent
+    for (const [agentName, agentResult] of result.agentResults) {
+      const status = agentResult.success ? GREEN('✓') : RED('✗')
+      console.log(`  ${status} ${CYAN(agentName)}`)
+
+      if (agentResult.output) {
+        const lines = agentResult.output.split('\n')
+        const displayLines = verbose ? lines : lines.slice(0, 20)
+        for (const line of displayLines) {
+          console.log(`  ${PURPLE('│')} ${line}`)
+        }
+        if (!verbose && lines.length > 20) {
+          console.log(`  ${PURPLE('│')} ${DIM(`... ${lines.length - 20} more lines (use --verbose)`)}`)
+        }
+        console.log('')
+      }
+
+      // Tool call summary
+      if (agentResult.toolCalls.length > 0) {
+        const tools = agentResult.toolCalls.map(t => t.toolName)
+        const unique = [...new Set(tools)]
+        console.log(`  ${DIM(`  tools: ${unique.join(', ')} (${tools.length} calls)`)}`)
+      }
+    }
+
+    // Summary
+    const usage = result.totalTokenUsage
+    const summary = getCompletionSummary()
+    const tokenInfo = `${usage.input_tokens} in / ${usage.output_tokens} out`
+    console.log(`  ${DIM(summary)}  ${DIM('·')}  ${DIM(tokenInfo)}`)
+    console.log(`  ${result.success ? GREEN('Team completed successfully') : RED('Team had failures')}`)
+  } catch (err) {
+    stopSpinner()
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(renderError(msg))
+  }
 
   console.log(GREEN_DIM('─'.repeat(60)))
   console.log('')

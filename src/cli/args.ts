@@ -13,6 +13,7 @@ export interface CliArgs {
   continue?: boolean
   verbose?: boolean
   cwd?: string
+  team?: string
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -60,6 +61,10 @@ export function parseArgs(argv: string[]): CliArgs {
       case '--verbose':
         args.verbose = true
         break
+      case '--team':
+      case '-t':
+        args.team = argv[++i]
+        break
       default:
         // If no flag prefix, treat as inline prompt
         if (!arg.startsWith('-') && !args.prompt) {
@@ -88,6 +93,7 @@ export function printHelp(): void {
     -p, --prompt <text>      Run a single prompt and exit
     -r, --resume <id>        Resume a previous session
     -c, --continue           Resume most recent session for this directory
+    -t, --team <preset>      Run in team mode (review, fullstack, security)
     --cwd <path>             Set working directory
     --verbose                Print full tool output (default: collapsed)
     -h, --help               Show this help
