@@ -13,16 +13,20 @@ import { globTool } from './glob.js'
 import { gitDiffTool } from './git-diff.js'
 import { gitLogTool } from './git-log.js'
 import { thinkTool } from './think.js'
+import { webFetchTool } from './web-fetch.js'
+import { askUserTool } from './ask-user.js'
 
 export {
   bashTool, fileReadTool, fileWriteTool, fileEditTool,
   grepTool, globTool, gitDiffTool, gitLogTool, thinkTool,
+  webFetchTool, askUserTool,
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const BUILT_IN_TOOLS: ToolDefinition<any>[] = [
   bashTool, fileReadTool, fileWriteTool, fileEditTool,
   grepTool, globTool, gitDiffTool, gitLogTool, thinkTool,
+  webFetchTool, askUserTool,
 ]
 
 export function registerBuiltInTools(registry: ToolRegistry): void {

@@ -56,5 +56,13 @@ export type { CompactionConfig } from './session/compaction.js'
 export { saveSession, loadSession, listSessions, findRecentSession, DebouncedSaver } from './session/session-persistence.js'
 export type { SavedSession } from './session/session-persistence.js'
 
+// Plugins & MCP
+export { PluginManager } from './plugins/plugin-manager.js'
+export { McpClient } from './plugins/mcp-client.js'
+
+// Config
+export { loadConfig, getUserConfigPath, getProjectConfigPath } from './config/config-loader.js'
+export { DEFAULT_CONFIG } from './config/defaults.js'
+
 // CLI
 export { startRepl } from './cli/repl.js'

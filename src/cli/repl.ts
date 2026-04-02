@@ -30,6 +30,9 @@ import {
 import { PermissionManager, classifyTool } from '../core/permissions.js'
 import type { RunCallbacks } from '../core/agent-runner.js'
 import { saveSession, loadSession, listSessions, findRecentSession, DebouncedSaver } from '../session/session-persistence.js'
+import { PluginManager } from '../plugins/plugin-manager.js'
+import { McpClient } from '../plugins/mcp-client.js'
+import { loadConfig } from '../config/config-loader.js'
 
 export interface ReplOptions {
   model: string
@@ -79,6 +82,33 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   // Tool registry
   const toolRegistry = new ToolRegistry()
   registerBuiltInTools(toolRegistry)
+
+  // Load config
+  const config = await loadConfig(cwd)
+
+  // Plugin manager
+  const pluginManager = new PluginManager()
+  for (const pluginSource of config.plugins) {
+    try {
+      await pluginManager.load(pluginSource)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.log(`  ${DIM('⚠ Plugin load failed:')} ${msg}`)
+    }
+  }
+  pluginManager.registerTools(toolRegistry)
+
+  // MCP client
+  const mcpClient = new McpClient()
+  for (const server of config.mcp.servers) {
+    try {
+      await mcpClient.connect(server)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.log(`  ${DIM('⚠ MCP connect failed:')} ${msg}`)
+    }
+  }
+  mcpClient.registerTools(toolRegistry)
 
   // Permission manager
   const permissionManager = new PermissionManager(
@@ -356,6 +386,69 @@ export async function startRepl(options: ReplOptions): Promise<void> {
             console.log(renderInfo(
               `Tasks: ${GREEN(`${s.completed} done`)} · ${YELLOW(`${s.in_progress} running`)} · ${DIM(`${s.pending} pending`)} · ${s.failed > 0 ? RED(`${s.failed} failed`) : DIM('0 failed')}`,
             ))
+          }
+        }
+        return
+      }
+
+      if (typeof result === 'string' && result.startsWith('__PLUGIN__:')) {
+        const sub = result.slice('__PLUGIN__:'.length).trim()
+        if (sub === 'list' || !sub) {
+          const plugins = pluginManager.list()
+          if (plugins.length === 0) {
+            console.log(renderInfo('No plugins loaded. Add plugins to ~/.cmdr/config.toml'))
+          } else {
+            const lines = ['', `  ${PURPLE.bold('Loaded plugins')}`, '']
+            for (const p of plugins) {
+              const hooks = p.hooks ? Object.keys(p.hooks).length : 0
+              const tools = p.tools?.length ?? 0
+              console.log(`  ${GREEN('•')} ${WHITE(p.name)} v${p.version} ${DIM(`(${hooks} hooks, ${tools} tools)`)}`)
+            }
+            lines.push('')
+            console.log(lines.join('\n'))
+          }
+        }
+        return
+      }
+
+      if (typeof result === 'string' && result.startsWith('__MCP__:')) {
+        const sub = result.slice('__MCP__:'.length).trim().split(/\s+/)
+        const action = sub[0]
+
+        if (action === 'list' || !action) {
+          const conns = mcpClient.listConnections()
+          if (conns.length === 0) {
+            console.log(renderInfo('No MCP servers connected. Add to ~/.cmdr/config.toml or use /mcp connect <name> <url>'))
+          } else {
+            const lines = ['', `  ${PURPLE.bold('MCP servers')}`, '']
+            for (const c of conns) {
+              const status = c.connected ? GREEN('connected') : RED('disconnected')
+              lines.push(`  ${GREEN('•')} ${WHITE(c.name)} ${DIM(c.url)} ${status} ${DIM(`(${c.tools} tools)`)}`)
+            }
+            lines.push('')
+            console.log(lines.join('\n'))
+          }
+        } else if (action === 'connect') {
+          const name = sub[1]
+          const url = sub[2]
+          if (!name || !url) {
+            console.log(renderInfo('Usage: /mcp connect <name> <url>'))
+          } else {
+            try {
+              const tools = await mcpClient.connect({ name, url })
+              mcpClient.registerTools(toolRegistry)
+              console.log(renderInfo(`Connected to ${name}: ${tools.length} tools discovered`))
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err)
+              console.log(renderError(msg))
+            }
+          }
+        } else if (action === 'disconnect') {
+          const name = sub[1]
+          if (name && mcpClient.disconnect(name)) {
+            console.log(renderInfo(`Disconnected from ${name}`))
+          } else {
+            console.log(renderError(`MCP server "${name}" not found`))
           }
         }
         return
