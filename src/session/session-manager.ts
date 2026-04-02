@@ -2,11 +2,18 @@
  * SessionManager — conversation history with token counting and compaction.
  */
 
-import type { LLMMessage, SessionState, ProjectContext, TokenUsage } from '../core/types.js'
+import type { LLMMessage, LLMAdapter, SessionState, ProjectContext, TokenUsage } from '../core/types.js'
 import { countMessageTokens } from '../llm/token-counter.js'
+import {
+  shouldCompact as checkCompact,
+  compactHistory,
+  DEFAULT_COMPACTION_CONFIG,
+  type CompactionConfig,
+} from './compaction.js'
 
 export class SessionManager {
   private session: SessionState
+  private compactionConfig: CompactionConfig
 
   constructor(projectContext: ProjectContext, maxContextTokens = 32768) {
     this.session = {
@@ -17,6 +24,10 @@ export class SessionManager {
       projectContext,
       createdAt: new Date(),
       lastActivity: new Date(),
+    }
+    this.compactionConfig = {
+      ...DEFAULT_COMPACTION_CONFIG,
+      maxContextTokens,
     }
   }
 
@@ -40,50 +51,32 @@ export class SessionManager {
   }
 
   shouldCompact(): boolean {
-    return this.session.tokenCount > this.session.maxContextTokens * 0.85
+    return checkCompact(this.session.messages, this.session.tokenCount, this.compactionConfig)
   }
 
-  /** Compact old messages, keeping the most recent exchanges intact. */
-  compact(keepRecentTurns = 6): void {
-    const msgs = this.session.messages
-    if (msgs.length <= keepRecentTurns * 2) return
+  /**
+   * Multi-stage compaction: truncate tool results → LLM summary → hard truncation.
+   * Returns the number of tokens saved.
+   */
+  async compact(adapter: LLMAdapter, model: string): Promise<{ before: number; after: number; tokensSaved: number }> {
+    const before = this.session.tokenCount
+    const beforeCount = this.session.messages.length
 
-    // Keep the most recent turns
-    const keepCount = keepRecentTurns * 2
-    const toSummarize = msgs.slice(0, msgs.length - keepCount)
-    const toKeep = msgs.slice(msgs.length - keepCount)
+    const result = await compactHistory(
+      this.session.messages,
+      this.compactionConfig,
+      adapter,
+      model,
+    )
 
-    // Build a summary of old messages
-    const summaryParts: string[] = ['[Previous conversation summary]']
-    for (const msg of toSummarize) {
-      const text = msg.content
-        .filter(b => b.type === 'text')
-        .map(b => (b as any).text)
-        .join('')
-        .slice(0, 200)
-      if (text) {
-        summaryParts.push(`${msg.role}: ${text}${text.length >= 200 ? '...' : ''}`)
-      }
-
-      // For tool results, keep just a brief note
-      const tools = msg.content.filter(b => b.type === 'tool_use' || b.type === 'tool_result')
-      if (tools.length > 0) {
-        const toolNames = tools
-          .filter(b => b.type === 'tool_use')
-          .map(b => (b as any).name)
-        if (toolNames.length > 0) {
-          summaryParts.push(`  [tools used: ${toolNames.join(', ')}]`)
-        }
-      }
-    }
-
-    const summaryMessage: LLMMessage = {
-      role: 'user',
-      content: [{ type: 'text', text: summaryParts.join('\n') }],
-    }
-
-    this.session.messages = [summaryMessage, ...toKeep]
+    this.session.messages = result.messages
     this.session.tokenCount = countMessageTokens(this.session.messages as any)
+
+    return {
+      before: beforeCount,
+      after: this.session.messages.length,
+      tokensSaved: result.tokensSaved,
+    }
   }
 
   clear(): void {

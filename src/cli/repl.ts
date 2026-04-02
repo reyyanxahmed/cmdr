@@ -6,7 +6,7 @@
  */
 
 import * as readline from 'readline'
-import type { LLMMessage, ToolUseBlock, ToolResultBlock, StreamEvent, ApprovalDecision, ToolRiskLevel } from '../core/types.js'
+import type { LLMMessage, LLMAdapter, ToolUseBlock, ToolResultBlock, StreamEvent, ApprovalDecision, ToolRiskLevel } from '../core/types.js'
 import { Agent } from '../core/agent.js'
 import { OllamaAdapter } from '../llm/ollama.js'
 import { ToolRegistry } from '../tools/registry.js'
@@ -127,7 +127,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   // --- Handle initial prompt if provided ---
   if (options.initialPrompt) {
-    await handleUserMessage(options.initialPrompt, agent, session, currentModel, permissionManager, verbose)
+    await handleUserMessage(options.initialPrompt, agent, session, currentModel, permissionManager, verbose, adapter)
     return
   }
 
@@ -227,9 +227,13 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
       if (result === '__COMPACT__') {
         session.syncFromAgent(agent.getHistory())
-        session.compact()
+        const beforeTokens = session.tokenCount
+        const stats = await session.compact(adapter, currentModel)
         agent.replaceMessages(session.messages)
-        console.log(renderInfo('History compacted.'))
+        const afterTokens = session.tokenCount
+        console.log(renderInfo(
+          `${DIM(`◇ compacted: ${stats.before} messages → ${stats.after} messages (saved ~${stats.tokensSaved} tokens)`)}`,
+        ))
         return
       }
 
@@ -250,7 +254,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     }
 
     // Regular message
-    await handleUserMessage(input, agent, session, currentModel, permissionManager, verbose)
+    await handleUserMessage(input, agent, session, currentModel, permissionManager, verbose, adapter)
   }
 
   rl.on('line', (line) => {
@@ -399,6 +403,7 @@ async function handleUserMessage(
   model: string,
   permissionManager: PermissionManager,
   verbose: boolean,
+  adapter: LLMAdapter,
 ): Promise<void> {
   console.log('') // spacing
 
@@ -518,9 +523,13 @@ async function handleUserMessage(
 
   // Auto-compact if context is getting full
   if (session.shouldCompact()) {
-    session.compact()
-    agent.replaceMessages(session.messages)
-    console.log(renderInfo(`${DIM('Auto-compacted conversation history.')}`))
+    try {
+      const stats = await session.compact(adapter, model)
+      agent.replaceMessages(session.messages)
+      console.log(`  ${DIM(`◇ compacted: ${stats.before} messages → ${stats.after} messages (saved ~${stats.tokensSaved} tokens)`)}`)
+    } catch {
+      // best effort — don't break the REPL
+    }
   }
 
   console.log(GREEN_DIM('─'.repeat(60)))
