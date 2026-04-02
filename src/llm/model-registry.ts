@@ -24,6 +24,7 @@ const KNOWN_MODELS: ModelInfo[] = [
   { name: 'mistral-nemo:12b', contextLength: 128000, supportsTools: true, parameterSize: '12B', recommended: 'midrange' },
   { name: 'deepseek-coder-v2:16b', contextLength: 65536, supportsTools: false, parameterSize: '16B', recommended: 'midrange' },
   { name: 'codellama:34b', contextLength: 16384, supportsTools: false, parameterSize: '34B', recommended: 'heavy' },
+  { name: 'minimax-m2.5:cloud', contextLength: 1048576, supportsTools: true, parameterSize: 'cloud', recommended: 'heavy' },
 ]
 
 export function getModelInfo(name: string): ModelInfo | undefined {

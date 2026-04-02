@@ -51,6 +51,7 @@ const TOOL_CAPABLE_FAMILIES = new Set([
   'llama3.1', 'llama3.2', 'llama3.3', 'llama4',
   'mistral', 'mistral-nemo', 'command-r', 'firefunction',
   'granite', 'nemotron', 'hermes3',
+  'minimax',
 ])
 
 // ---------------------------------------------------------------------------
