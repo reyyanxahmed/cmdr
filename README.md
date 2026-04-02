@@ -1,5 +1,9 @@
 # cmdr
 
+[![CI](https://github.com/reyyanxahmed/cmdr/actions/workflows/ci.yml/badge.svg)](https://github.com/reyyanxahmed/cmdr/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/cmdr-agent)](https://www.npmjs.com/package/cmdr-agent)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 > Open-source, Ollama-native, multi-agent coding tool for your terminal.
 
 ```
@@ -18,10 +22,15 @@
 - **Local-first** — powered by Ollama, all inference runs on your hardware
 - **Multi-agent architecture** — extensible agent/runner pipeline with tool calling
 - **Interactive REPL** — streaming output, markdown rendering, AMOLED-friendly theme
-- **Built-in tools** — file read/write/edit, glob, grep, bash, git diff/log, think
+- **Built-in tools** — file read/write/edit, glob, grep, bash, git diff/log/commit/branch, web fetch, think
 - **HITL permissions** — approve, deny, or always-allow each tool call
 - **Context compaction** — multi-stage strategy keeps conversations within context limits
 - **Session persistence** — auto-save, resume, and `--continue` flag
+- **Token cost tracking** — `/cost` command shows per-session usage breakdown
+- **Undo** — `/undo` reverts file changes made by the agent
+- **Multi-agent teams** — built-in presets: code review, full-stack, security audit
+- **Plugin system** — load custom plugins from npm modules or local paths
+- **MCP client** — connect to Model Context Protocol servers for extended tools
 - **Project awareness** — auto-detects language, framework, and reads `CMDR.md` instructions
 - **Whimsical UX** — 150+ spinner verbs, past-tense summaries, collapsed tool output
 
@@ -46,6 +55,7 @@ cmdr "fix the failing tests"     # Single prompt, then exit
 cmdr -m llama3.1:8b              # Use a specific model
 cmdr -c                          # Continue most recent session
 cmdr --resume <session-id>       # Resume a specific session
+cmdr --team review               # Multi-agent code review team
 cmdr --cwd /path/to/project      # Override working directory
 ```
 
@@ -58,6 +68,7 @@ cmdr --cwd /path/to/project      # Override working directory
 | `-p, --prompt <text>` | Run a single prompt and exit |
 | `-r, --resume <id>` | Resume a previous session |
 | `-c, --continue` | Resume most recent session for this directory |
+| `-t, --team <preset>` | Run with a multi-agent team (review, fullstack, security) |
 | `--cwd <path>` | Set working directory |
 | `--verbose` | Print full tool output |
 | `--dangerously-skip-permissions` | Auto-approve all tool calls |
@@ -74,7 +85,15 @@ cmdr --cwd /path/to/project      # Override working directory
 | `/status` | Show session info |
 | `/context` | Show context window usage |
 | `/compact` | Manually trigger compaction |
+| `/cost` | Show token usage breakdown |
+| `/undo` | Revert the last file change made by the agent |
 | `/diff` | Show git diff |
+| `/team [preset]` | Switch to a multi-agent team |
+| `/agents` | Show active agents and status |
+| `/tasks` | Show task queue status |
+| `/config` | View configuration |
+| `/plugin list` | List loaded plugins |
+| `/mcp list` | List MCP server connections |
 | `/session save` | Save current session |
 | `/session resume <id>` | Resume a session |
 | `/sessions` | List saved sessions |
@@ -95,7 +114,41 @@ cmdr --cwd /path/to/project      # Override working directory
 | `glob` | Find files by pattern |
 | `git_diff` | Show working tree or staged changes |
 | `git_log` | Recent commit history |
+| `git_commit` | Stage and commit files |
+| `git_branch` | Create, switch, or list branches |
+| `web_fetch` | Fetch a URL (SSRF-protected) |
+| `ask_user` | Ask the user a question |
 | `think` | Extended reasoning scratchpad (no side effects) |
+
+## Multi-Agent Teams
+
+cmdr supports multi-agent collaboration with built-in presets:
+
+```bash
+cmdr --team review      # Coder + Reviewer
+cmdr --team fullstack   # Planner + Frontend + Backend + Reviewer
+cmdr --team security    # Security Scanner + Reviewer
+```
+
+Or switch teams mid-session with `/team review`.
+
+Each agent has its own system prompt, tool access, and optional model. Results flow through shared memory so downstream agents see what upstream agents produced.
+
+## Plugins & MCP
+
+Load plugins from npm modules or local paths in `~/.cmdr/config.toml`:
+
+```toml
+plugins = ["cmdr-plugin-prettier", "./my-local-plugin.js"]
+
+[[mcp.servers]]
+name = "my-tools"
+url = "http://localhost:8080"
+```
+
+Plugins can provide tools, slash commands, and lifecycle hooks (beforePrompt, afterResponse, onError, etc.).
+
+MCP servers are discovered via the `/tools` endpoint and their tools are registered with a `mcp_` prefix.
 
 ## CMDR.md
 
@@ -130,11 +183,17 @@ You can also use `.cmdr/instructions.md` — both files are loaded and concatena
 
 ## Configuration
 
-cmdr reads a config file at `~/.cmdr/config.toml`:
+cmdr reads config from `~/.cmdr/config.toml` (user) and `.cmdr.toml` (project):
 
 ```toml
+defaultModel = "qwen3-coder:latest"
+ollamaUrl = "http://localhost:11434"
+
 [spinner]
 speed = 150
+
+[telemetry]
+enabled = false   # opt-in local-only usage stats
 ```
 
 ### Environment Variables
@@ -150,9 +209,13 @@ speed = 150
 bin/cmdr.ts          CLI entry point
 src/
   cli/               REPL, commands, args, spinner, theme, renderer
-  core/              Agent, AgentRunner, types, presets, permissions
+  core/              Agent, AgentRunner, Orchestrator, Team, presets, permissions
+  communication/     MessageBus, SharedMemory, TaskQueue
+  scheduling/        Semaphore, agent selection strategies
+  config/            Config loader, schema, telemetry
   llm/               OllamaAdapter, model registry, token counter
-  session/           SessionManager, compaction, persistence, project context
+  plugins/           PluginManager, McpClient
+  session/           SessionManager, compaction, persistence, cost tracker, undo
   tools/             ToolRegistry, ToolExecutor, built-in tools
 ```
 

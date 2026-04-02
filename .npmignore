@@ -9,3 +9,11 @@ tsconfig.json
 CONTRIBUTING.md
 CMDR.md
 .cmdr/
+cmdr_master.md
+claude-code-main/
+claw-code-main/
+open-multi-agent-main/
+.DS_Store
+.env
+.env.*
+*.tsbuildinfo
