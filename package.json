@@ -19,8 +19,17 @@
     "eval:report": "npx tsx evals/report.ts",
     "prepublishOnly": "npm run build"
   },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "engines": {
     "node": ">=20.0.0"
+  },
+  "homepage": "https://github.com/reyyanxahmed/cmdr#readme",
+  "bugs": {
+    "url": "https://github.com/reyyanxahmed/cmdr/issues"
   },
   "dependencies": {
     "chalk": "^5.3.0",
