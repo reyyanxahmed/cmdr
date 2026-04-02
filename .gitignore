@@ -1,8 +1,6 @@
 node_modules/
 dist/
 *.js.map
-*.d.ts.map
-*.d.ts
 .DS_Store
 .env
 .env.*
