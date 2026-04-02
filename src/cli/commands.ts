@@ -419,6 +419,22 @@ registerCommand({
 })
 
 registerCommand({
+  name: 'cost',
+  description: 'Show token usage breakdown for this session',
+  execute: async () => {
+    return '__COST__'
+  },
+})
+
+registerCommand({
+  name: 'undo',
+  description: 'Revert the last file change made by the agent',
+  execute: async () => {
+    return '__UNDO__'
+  },
+})
+
+registerCommand({
   name: 'quit',
   description: 'Exit cmdr',
   execute: async () => {

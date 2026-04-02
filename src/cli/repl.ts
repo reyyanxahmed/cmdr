@@ -33,6 +33,8 @@ import { saveSession, loadSession, listSessions, findRecentSession, DebouncedSav
 import { PluginManager } from '../plugins/plugin-manager.js'
 import { McpClient } from '../plugins/mcp-client.js'
 import { loadConfig } from '../config/config-loader.js'
+import { CostTracker } from '../session/cost-tracker.js'
+import { UndoManager } from '../session/undo-manager.js'
 
 export interface ReplOptions {
   model: string
@@ -109,6 +111,12 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     }
   }
   mcpClient.registerTools(toolRegistry)
+
+  // Cost tracker
+  const costTracker = new CostTracker()
+
+  // Undo manager
+  const undoManager = new UndoManager()
 
   // Permission manager
   const permissionManager = new PermissionManager(
@@ -198,7 +206,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   // --- Handle initial prompt if provided ---
   if (options.initialPrompt) {
-    await handleUserMessage(options.initialPrompt, agent, session, currentModel, permissionManager, verbose, adapter)
+    await handleUserMessage(options.initialPrompt, agent, session, currentModel, permissionManager, verbose, adapter, costTracker, undoManager)
     await doSave()
     return
   }
@@ -391,6 +399,41 @@ export async function startRepl(options: ReplOptions): Promise<void> {
         return
       }
 
+      if (result === '__COST__') {
+        const summary = costTracker.getSummary()
+        const elapsed = costTracker.formatElapsed()
+        const lines = [
+          '',
+          `  ${PURPLE.bold('Token usage')}`,
+          '',
+          `  ${DIM('Model:')}          ${WHITE(summary.model)}`,
+          `  ${DIM('Turns:')}          ${WHITE(String(summary.turns))}`,
+          `  ${DIM('Input tokens:')}   ${WHITE(String(summary.totalInputTokens))}`,
+          `  ${DIM('Output tokens:')}  ${WHITE(String(summary.totalOutputTokens))}`,
+          `  ${DIM('Total tokens:')}   ${GREEN(String(summary.totalTokens))}`,
+          `  ${DIM('Tool calls:')}     ${WHITE(String(summary.totalToolCalls))}`,
+          `  ${DIM('Avg/turn:')}       ${WHITE(String(summary.avgTokensPerTurn))}`,
+          `  ${DIM('Session time:')}   ${WHITE(elapsed)}`,
+          '',
+        ]
+        console.log(lines.join('\n'))
+        return
+      }
+
+      if (result === '__UNDO__') {
+        if (undoManager.count === 0) {
+          console.log(renderInfo('Nothing to undo.'))
+        } else {
+          const change = await undoManager.undoLast()
+          if (change) {
+            const action = change.originalContent === null ? 'deleted' : 'restored'
+            const fname = change.path.split('/').pop() ?? change.path
+            console.log(renderInfo(`Undid ${change.type} on ${GREEN(fname)} (${action})`))
+          }
+        }
+        return
+      }
+
       if (typeof result === 'string' && result.startsWith('__PLUGIN__:')) {
         const sub = result.slice('__PLUGIN__:'.length).trim()
         if (sub === 'list' || !sub) {
@@ -462,7 +505,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     if (activeTeamConfig) {
       await handleTeamMessage(input, orchestrator, activeTeamConfig, currentModel, verbose)
     } else {
-      await handleUserMessage(input, agent, session, currentModel, permissionManager, verbose, adapter, () => {
+      await handleUserMessage(input, agent, session, currentModel, permissionManager, verbose, adapter, costTracker, undoManager, () => {
         autoSaver.schedule(doSave)
       })
     }
@@ -616,6 +659,8 @@ async function handleUserMessage(
   permissionManager: PermissionManager,
   verbose: boolean,
   adapter: LLMAdapter,
+  costTracker?: CostTracker,
+  undoManager?: UndoManager,
   onAfterResponse?: () => void,
 ): Promise<void> {
   console.log('') // spacing
@@ -626,6 +671,7 @@ async function handleUserMessage(
   let firstText = true
   let currentTool = ''
   let currentToolInput: Record<string, unknown> = {}
+  let toolCallCount = 0
 
   // Build callbacks with the approval gate
   const callbacks: RunCallbacks = {
@@ -662,6 +708,16 @@ async function handleUserMessage(
           const block = event.data as ToolUseBlock
           currentTool = block.name
           currentToolInput = block.input
+          toolCallCount++
+
+          // Record file state for undo before write/edit tools
+          if (undoManager && (block.name === 'file_write' || block.name === 'file_edit')) {
+            const filePath = (block.input.path ?? block.input.file_path) as string | undefined
+            if (filePath) {
+              await undoManager.recordBefore(filePath, block.name === 'file_write' ? 'write' : 'edit')
+            }
+          }
+
           console.log(renderToolExec(block.name, block.input))
           startToolExec(block.name)
           break
@@ -730,6 +786,9 @@ async function handleUserMessage(
     ? `  ${DIM('·')}  ${DIM(`${tokens.input_tokens} in / ${tokens.output_tokens} out`)}`
     : ''
   console.log(`  ${DIM(summary)}${tokenInfo}`)
+
+  // Record cost data
+  costTracker?.record(model, tokens.input_tokens, tokens.output_tokens, toolCallCount)
 
   // Sync agent messages into session for compaction tracking
   session.syncFromAgent(agent.getHistory())

@@ -55,6 +55,10 @@ export { compactHistory, shouldCompact, DEFAULT_COMPACTION_CONFIG } from './sess
 export type { CompactionConfig } from './session/compaction.js'
 export { saveSession, loadSession, listSessions, findRecentSession, DebouncedSaver } from './session/session-persistence.js'
 export type { SavedSession } from './session/session-persistence.js'
+export { CostTracker } from './session/cost-tracker.js'
+export type { CostEntry, CostSummary } from './session/cost-tracker.js'
+export { UndoManager } from './session/undo-manager.js'
+export type { FileChange } from './session/undo-manager.js'
 
 // Plugins & MCP
 export { PluginManager } from './plugins/plugin-manager.js'
@@ -63,6 +67,8 @@ export { McpClient } from './plugins/mcp-client.js'
 // Config
 export { loadConfig, getUserConfigPath, getProjectConfigPath } from './config/config-loader.js'
 export { DEFAULT_CONFIG } from './config/defaults.js'
+export { Telemetry } from './config/telemetry.js'
+export type { TelemetryEvent } from './config/telemetry.js'
 
 // CLI
 export { startRepl } from './cli/repl.js'
