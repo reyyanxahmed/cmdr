@@ -235,6 +235,9 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     processing = true
     try {
       await processLine(input)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(renderError(msg))
     } finally {
       processing = false
       if (closed) {
@@ -302,7 +305,6 @@ export async function startRepl(options: ReplOptions): Promise<void> {
         console.log(`\n  ${PURPLE('Goodbye.')} ${DIM('Session ended.')}\n`)
         closed = true
         rl.close()
-        process.exit(0)
         return
       }
 
@@ -765,7 +767,13 @@ async function handleUserMessage(
   } catch (err) {
     stopSpinner()
     const msg = err instanceof Error ? err.message : String(err)
-    console.error(renderError(msg))
+    if (msg.includes('not found') || msg.includes('404') || (msg.includes('model') && msg.includes('pull'))) {
+      console.error(renderError(
+        `Model '${model}' not found. Run ${GREEN('/models')} to see available models or ${GREEN('/model <name>')} to switch.`,
+      ))
+    } else {
+      console.error(renderError(msg))
+    }
   }
 
   // Ensure we end the text block with a newline
