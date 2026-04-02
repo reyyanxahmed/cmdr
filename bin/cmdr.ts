@@ -13,7 +13,7 @@ import { GREEN, PURPLE, DIM, renderError, WHITE, CYAN } from '../src/cli/theme.j
 import { OllamaAdapter } from '../src/llm/ollama.js'
 import * as readline from 'readline'
 
-const VERSION = '1.0.2'
+const VERSION = '1.1.0'
 
 /** Prompt user to pick a model from the list. */
 function promptModelSelection(models: string[]): Promise<string> {

@@ -14,8 +14,9 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "jsx": "react-jsx"
   },
-  "include": ["src/**/*.ts", "bin/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "bin/**/*.ts"],
   "exclude": ["node_modules", "dist", "tests"]
 }
