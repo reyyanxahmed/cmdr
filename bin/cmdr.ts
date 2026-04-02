@@ -97,6 +97,7 @@ async function main(): Promise<void> {
     await startRepl({
       model,
       ollamaUrl,
+      version: VERSION,
       initialPrompt: args.prompt,
       dangerouslySkipPermissions: args.dangerouslySkipPermissions,
       resume: args.resume,

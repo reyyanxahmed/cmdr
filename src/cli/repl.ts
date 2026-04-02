@@ -39,6 +39,7 @@ import { UndoManager } from '../session/undo-manager.js'
 export interface ReplOptions {
   model: string
   ollamaUrl: string
+  version?: string
   initialPrompt?: string
   dangerouslySkipPermissions?: boolean
   resume?: string
@@ -158,7 +159,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     : permissionManager.getMode() === 'strict'
     ? RED('strict (all tools require approval)')
     : GREEN('normal (write tools require approval)')
-  console.log(renderWelcome(currentModel, projectInfo))
+  console.log(renderWelcome(currentModel, projectInfo, options.version))
   console.log(`  ${DIM('Permissions:')} ${modeLabel}`)
 
   if (activeTeamConfig) {
