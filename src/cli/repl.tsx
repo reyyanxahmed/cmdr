@@ -21,6 +21,7 @@ import type { TeamConfig } from '../core/types.js'
 import { SessionManager } from '../session/session-manager.js'
 import { discoverProject } from '../session/project-context.js'
 import { buildSystemPrompt } from '../session/prompt-builder.js'
+import { getDefaultContextLength, resolveContextLength } from '../llm/model-registry.js'
 import {
   renderWelcome, renderError,
   GREEN, PURPLE, DIM, WHITE,
@@ -73,8 +74,9 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     ? `${projectContext.language}${projectContext.framework ? ' / ' + projectContext.framework : ''}`
     : cwd.split('/').pop() || 'unknown'
 
-  // Session
-  const session = new SessionManager(projectContext)
+  // Session — resolve model's actual context length
+  const modelContextLength = await resolveContextLength(options.model, options.ollamaUrl)
+  const session = new SessionManager(projectContext, modelContextLength)
 
   // Build system prompt with project context
   const systemPrompt = buildSystemPrompt({
