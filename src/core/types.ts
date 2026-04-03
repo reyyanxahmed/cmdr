@@ -201,6 +201,8 @@ export interface ProjectContext {
   relevantFiles: string[]
   /** Contents of CMDR.md from the project root, if present. */
   cmdrInstructions?: string
+  /** Skills active for this session. */
+  activeSkills?: readonly { name: string; instructions: string; scripts: string[] }[]
 }
 
 // ---------------------------------------------------------------------------
