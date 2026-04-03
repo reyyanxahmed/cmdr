@@ -459,6 +459,34 @@ registerCommand({
   },
 })
 
+// ---------------------------------------------------------------------------
+// Skills commands
+// ---------------------------------------------------------------------------
+
+registerCommand({
+  name: 'skills',
+  description: 'List available skills',
+  execute: async () => {
+    return '__SKILLS_LIST__'
+  },
+})
+
+registerCommand({
+  name: 'skill',
+  description: 'Skill management: info, install, create',
+  execute: async (args) => {
+    const parts = args.trim().split(/\s+/)
+    const sub = parts[0]?.toLowerCase()
+    const rest = parts.slice(1).join(' ')
+
+    if (sub === 'info' && rest) return `__SKILL_INFO__:${rest}`
+    if (sub === 'install' && rest) return `__SKILL_INSTALL__:${rest}`
+    if (sub === 'create' && rest) return `__SKILL_CREATE__:${rest}`
+
+    return renderInfo('Usage: /skill info <name> | /skill install <path> | /skill create <name>')
+  },
+})
+
 registerCommand({
   name: 'quit',
   description: 'Exit cmdr',

@@ -1,201 +1,150 @@
 /**
- * Eval runner — executes eval tasks and records results.
+ * cmdr eval harness — multi-tier evaluation runner.
  *
- * Each task is a directory in evals/tasks/ containing:
- *   task.json   — { prompt, tier, description }
- *   verify.sh   — exits 0 if the task passed
- *   workspace/  — scratch directory copied fresh for each run
- *
- * Usage: npx tsx evals/run-evals.ts [--model <model>] [--filter <pattern>]
+ * Usage:
+ *   npx tsx evals/run-evals.ts                          # run all tasks
+ *   npx tsx evals/run-evals.ts --model qwen3-coder      # specific model
+ *   npx tsx evals/run-evals.ts --filter "create|hello"   # filter by pattern
+ *   npx tsx evals/run-evals.ts --tier basic,intermediate  # filter by tier
+ *   npx tsx evals/run-evals.ts --json                    # save JSON report
+ *   npx tsx evals/run-evals.ts --pdf                     # generate PDF report
  */
 
-import { execSync, execFileSync } from 'child_process'
-import { readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, existsSync, readdirSync } from 'fs'
-import { join, resolve, basename } from 'path'
+import type { EvalTask, TaskResult, EvalRun, Tier } from './lib/types.js'
+import { runBatch } from './lib/runner.js'
+import { computeSummary } from './lib/scorer.js'
+import { printTerminalReport, saveJsonReport, savePdfReport } from './lib/reporter.js'
+import { randomUUID } from 'crypto'
 
-interface TaskDef {
-  prompt: string
-  tier: 'trivial' | 'easy' | 'medium' | 'hard'
-  description: string
-  timeout?: number
-}
+// ---------------------------------------------------------------------------
+// CLI argument parsing
+// ---------------------------------------------------------------------------
 
-interface TaskResult {
-  name: string
-  tier: string
-  passed: boolean
-  durationMs: number
-  error?: string
-}
-
-interface EvalReport {
-  model: string
-  timestamp: string
-  results: TaskResult[]
-  summary: {
-    total: number
-    passed: number
-    failed: number
-    byTier: Record<string, { total: number; passed: number }>
-  }
-}
-
-// --- Parse CLI args ---
 const args = process.argv.slice(2)
 let model = 'qwen2.5-coder:14b'
 let filter = ''
 let ollamaUrl = 'http://localhost:11434'
+let tierFilter: Tier[] | undefined
+let saveJson = false
+let savePdf = false
+let timeout: number | undefined
 
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--model' || args[i] === '-m') model = args[++i]
-  if (args[i] === '--filter' || args[i] === '-f') filter = args[++i]
-  if (args[i] === '--ollama-url' || args[i] === '-u') ollamaUrl = args[++i]
+  switch (args[i]) {
+    case '--model': case '-m': model = args[++i]; break
+    case '--filter': case '-f': filter = args[++i]; break
+    case '--ollama-url': case '-u': ollamaUrl = args[++i]; break
+    case '--tier': case '-t':
+      tierFilter = args[++i].split(',').map(s => s.trim()) as Tier[]
+      break
+    case '--json': saveJson = true; break
+    case '--pdf': savePdf = true; break
+    case '--timeout': timeout = parseInt(args[++i]); break
+    case '--help': case '-h':
+      console.log(`
+  cmdr eval harness
+
+  Options:
+    -m, --model <name>       Model to use (default: qwen2.5-coder:14b)
+    -f, --filter <pattern>   Regex to filter task IDs
+    -t, --tier <list>        Comma-separated tier filter (basic,intermediate,advanced,hard,expert,extreme)
+    -u, --ollama-url <url>   Ollama API URL (default: http://localhost:11434)
+        --json               Save JSON report to evals/reports/
+        --pdf                Generate PDF report (requires python3 + reportlab)
+        --timeout <ms>       Override per-task timeout
+    -h, --help               Show this help message
+`)
+      process.exit(0)
+  }
 }
 
-// --- Discover tasks ---
-const EVALS_DIR = resolve(import.meta.dirname ?? '.', 'tasks')
-const RESULTS_DIR = resolve(import.meta.dirname ?? '.', 'results')
+// ---------------------------------------------------------------------------
+// ANSI helpers
+// ---------------------------------------------------------------------------
 
-function discoverTasks(): string[] {
-  const dirs = readdirSync(EVALS_DIR, { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name)
-    .sort()
-
-  if (filter) {
-    const re = new RegExp(filter, 'i')
-    return dirs.filter(d => re.test(d))
-  }
-  return dirs
+const c = {
+  green: (s: string) => `\x1b[32m${s}\x1b[0m`,
+  red: (s: string) => `\x1b[31m${s}\x1b[0m`,
+  yellow: (s: string) => `\x1b[33m${s}\x1b[0m`,
+  cyan: (s: string) => `\x1b[36m${s}\x1b[0m`,
+  dim: (s: string) => `\x1b[2m${s}\x1b[0m`,
+  bold: (s: string) => `\x1b[1m${s}\x1b[0m`,
 }
 
-// --- Run a single task ---
-async function runTask(taskDir: string): Promise<TaskResult> {
-  const name = basename(taskDir)
-  const taskJsonPath = join(taskDir, 'task.json')
-  const verifyPath = join(taskDir, 'verify.sh')
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 
-  if (!existsSync(taskJsonPath)) {
-    return { name, tier: 'unknown', passed: false, durationMs: 0, error: 'Missing task.json' }
-  }
-
-  const task: TaskDef = JSON.parse(readFileSync(taskJsonPath, 'utf-8'))
-  const timeoutMs = task.timeout ?? 60_000
-
-  // Create a temp workspace
-  const tmpDir = join(RESULTS_DIR, '.workspaces', name)
-  if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true })
-  mkdirSync(tmpDir, { recursive: true })
-
-  // Copy workspace/ contents if they exist
-  const srcWorkspace = join(taskDir, 'workspace')
-  if (existsSync(srcWorkspace)) {
-    cpSync(srcWorkspace, tmpDir, { recursive: true })
-  }
-
-  const start = Date.now()
-  let passed = false
-  let error: string | undefined
-
-  try {
-    // Run cmdr with the task prompt in the temp workspace
-    const cmdrBin = resolve(import.meta.dirname ?? '.', '..', 'dist', 'bin', 'cmdr.js')
-    execFileSync('node', [cmdrBin, '--cwd', tmpDir, '-m', model, '-u', ollamaUrl, '-p', task.prompt], {
-      timeout: timeoutMs,
-      stdio: 'pipe',
-      env: { ...process.env, NODE_NO_WARNINGS: '1' },
-    })
-
-    // Run verify.sh
-    if (existsSync(verifyPath)) {
-      execFileSync('bash', [verifyPath], {
-        cwd: tmpDir,
-        timeout: 10_000,
-        stdio: 'pipe',
-      })
-      passed = true
-    } else {
-      error = 'Missing verify.sh'
-    }
-  } catch (err: any) {
-    error = err.message?.slice(0, 500) ?? String(err)
-  }
-
-  const durationMs = Date.now() - start
-
-  // Clean up workspace
-  try {
-    rmSync(tmpDir, { recursive: true })
-  } catch {
-    // best effort
-  }
-
-  return { name, tier: task.tier, passed, durationMs, error }
-}
-
-// --- Main ---
 async function main(): Promise<void> {
-  console.log(`\n  cmdr eval runner`)
-  console.log(`  Model: ${model}`)
-  console.log(`  Ollama: ${ollamaUrl}\n`)
+  console.log('')
+  console.log(`  ${c.bold('cmdr eval harness')}`)
+  console.log(`  Model  : ${c.cyan(model)}`)
+  console.log(`  Ollama : ${ollamaUrl}`)
+  if (filter) console.log(`  Filter : ${filter}`)
+  if (tierFilter) console.log(`  Tiers  : ${tierFilter.join(', ')}`)
+  console.log('')
 
-  mkdirSync(RESULTS_DIR, { recursive: true })
-  mkdirSync(join(RESULTS_DIR, '.workspaces'), { recursive: true })
+  const startedAt = new Date().toISOString()
 
-  const taskNames = discoverTasks()
-  if (taskNames.length === 0) {
-    console.log('  No tasks found.')
+  const { tasks, results } = await runBatch({
+    model,
+    ollamaUrl,
+    filter: filter || undefined,
+    tierFilter,
+    timeout,
+    onTaskStart(task: EvalTask, i: number, total: number) {
+      const num = `[${i + 1}/${total}]`
+      process.stdout.write(`  ${c.dim(num)} ${task.id.padEnd(30)} `)
+    },
+    onTaskComplete(task: EvalTask, result: TaskResult, _i: number, _total: number) {
+      const status = result.passed
+        ? c.green('PASS')
+        : c.red('FAIL')
+      const time = c.dim(`${result.duration.toFixed(1)}s`)
+      const err = result.error ? c.dim(` — ${result.error.slice(0, 60)}`) : ''
+      console.log(`${status} ${time}${err}`)
+    },
+  })
+
+  if (tasks.length === 0) {
+    console.log('  No tasks found. Add tasks to evals/tasks/.')
     return
   }
 
-  console.log(`  Found ${taskNames.length} tasks\n`)
-
-  const results: TaskResult[] = []
-
-  for (const name of taskNames) {
-    const taskDir = join(EVALS_DIR, name)
-    process.stdout.write(`  ${name} ... `)
-
-    const result = await runTask(taskDir)
-    results.push(result)
-
-    const status = result.passed ? '✓ PASS' : '✗ FAIL'
-    const time = `(${(result.durationMs / 1000).toFixed(1)}s)`
-    console.log(`${status} ${time}${result.error ? ` — ${result.error.slice(0, 80)}` : ''}`)
-  }
-
-  // Build summary
-  const byTier: Record<string, { total: number; passed: number }> = {}
-  for (const r of results) {
-    if (!byTier[r.tier]) byTier[r.tier] = { total: 0, passed: 0 }
-    byTier[r.tier].total++
-    if (r.passed) byTier[r.tier].passed++
-  }
-
-  const report: EvalReport = {
+  // Build run report
+  const summary = computeSummary(tasks, results)
+  const run: EvalRun = {
+    id: randomUUID(),
     model,
-    timestamp: new Date().toISOString(),
-    results,
-    summary: {
-      total: results.length,
-      passed: results.filter(r => r.passed).length,
-      failed: results.filter(r => !r.passed).length,
-      byTier,
-    },
+    ollamaUrl,
+    startedAt,
+    completedAt: new Date().toISOString(),
+    tasks: results,
+    summary,
   }
 
-  // Save report
-  const reportFile = join(RESULTS_DIR, `eval-${model.replace(/[:/]/g, '-')}-${Date.now()}.json`)
-  writeFileSync(reportFile, JSON.stringify(report, null, 2))
+  // Terminal output
+  printTerminalReport(run)
 
-  console.log(`\n  ── Results ──`)
-  console.log(`  Total:  ${report.summary.total}`)
-  console.log(`  Passed: ${report.summary.passed}`)
-  console.log(`  Failed: ${report.summary.failed}`)
-  for (const [tier, stats] of Object.entries(byTier)) {
-    console.log(`    ${tier}: ${stats.passed}/${stats.total}`)
+  // Optional: save JSON report
+  if (saveJson) {
+    const path = saveJsonReport(run)
+    console.log(`  ${c.dim(`JSON report: ${path}`)}`)
   }
-  console.log(`\n  Report: ${reportFile}\n`)
+
+  // Optional: generate PDF report
+  if (savePdf) {
+    const path = savePdfReport(run)
+    if (path) {
+      console.log(`  ${c.dim(`PDF report: ${path}`)}`)
+    }
+  }
+
+  // Exit with non-zero if grade is below C
+  const exitCode = summary.grade === 'S' || summary.grade === 'A' || summary.grade === 'B' || summary.grade === 'C'
+    ? 0
+    : 1
+  process.exit(exitCode)
 }
 
 main().catch(err => {
