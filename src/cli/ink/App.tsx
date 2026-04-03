@@ -16,6 +16,7 @@ import type { PermissionManager } from '../../core/permissions.js'
 import type { LLMAdapter, ToolUseBlock, ToolResultBlock, ApprovalDecision, ToolRiskLevel, TeamConfig } from '../../core/types.js'
 import type { Orchestrator } from '../../core/orchestrator.js'
 import type { RunCallbacks } from '../../core/agent-runner.js'
+import { getDefaultContextLength } from '../../llm/model-registry.js'
 import { isSlashCommand, parseSlashCommand, getCommand } from '../commands.js'
 import {
   saveSession, loadSession, listSessions, findRecentSession, DebouncedSaver,
@@ -530,7 +531,11 @@ export default function App(props: InkAppProps): React.ReactElement {
 
     const result = await cmd.execute(args, {
       session: session.getState(),
-      switchModel: (model: string) => { currentModelRef.current = model },
+      switchModel: (model: string) => {
+        currentModelRef.current = model
+        agent.setModel(model)
+        session.updateContextLength(getDefaultContextLength(model))
+      },
       clearHistory: () => {
         session.clear()
         agent.reset()
