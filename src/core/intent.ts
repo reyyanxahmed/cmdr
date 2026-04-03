@@ -85,6 +85,22 @@ export function classifyIntent(message: string): UserIntent {
   return 'exploratory'
 }
 
+// ---------------------------------------------------------------------------
+// Frustration detection
+// ---------------------------------------------------------------------------
+
+const FRUSTRATION_REGEX = /\b(wtf|wth|ffs|omfg|shit(?:ty|tiest)?|horrible|awful|piece\s*of\s*(?:shit|crap|junk)|what\s*the\s*(?:fuck|hell)|fuck(?:ing)?\s*(?:broken|useless|terrible|awful|horrible)|screw\s*(?:this|you)|so\s+frustrating|this\s+sucks|damn\s*it|ugh{2,}|argh{2,})\b/i
+
+export function detectFrustration(message: string): boolean {
+  return FRUSTRATION_REGEX.test(message)
+}
+
+export const FRUSTRATION_NUDGE = `[The user seems frustrated. Be extra careful with your next actions:
+- Explain your reasoning briefly before each tool call
+- Verify every change by running tests
+- Offer to undo recent changes if something went wrong
+- Take it one step at a time, do not batch multiple changes]`
+
 /**
  * Filter tool definitions based on intent.
  *

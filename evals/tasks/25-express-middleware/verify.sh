@@ -42,13 +42,23 @@ if (!corsNextCalled) {
 }
 const acao = corsRes.headers['Access-Control-Allow-Origin'];
 if (acao !== '*') {
-  console.log('FAIL: cors did not set Access-Control-Allow-Origin to *, got', arao);
+  console.log('FAIL: cors did not set Access-Control-Allow-Origin to *, got', acao);
   process.exit(1);
 }
 
 // Test jsonParser parses body and calls next
 let parserNextCalled = false;
-const jsonReq = { body: '{\"key\":\"value\"}', headers: { 'content-type': 'application/json' } };
+const jsonBody = '{\"key\":\"value\"}';
+const jsonReq = {
+  body: jsonBody,
+  headers: { 'content-type': 'application/json' },
+  // Provide stream-like interface for models that read from request stream
+  on(event, cb) {
+    if (event === 'data') cb(Buffer.from(jsonBody));
+    if (event === 'end') cb();
+    return this;
+  }
+};
 const jsonRes = {};
 jsonParser(jsonReq, jsonRes, () => { parserNextCalled = true; });
 if (!parserNextCalled) {

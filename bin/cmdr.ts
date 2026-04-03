@@ -14,7 +14,7 @@ import { OllamaAdapter } from '../src/llm/ollama.js'
 import { checkForUpdate } from '../src/cli/update-checker.js'
 import * as readline from 'readline'
 
-const VERSION = '1.2.2'
+const VERSION = '1.3.0'
 
 /** Prompt user to pick a model from the list. */
 function promptModelSelection(models: string[]): Promise<string> {
@@ -108,6 +108,7 @@ async function main(): Promise<void> {
       continue: args.continue,
       verbose: args.verbose,
       team: args.team,
+      maxTurns: args.maxTurns,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

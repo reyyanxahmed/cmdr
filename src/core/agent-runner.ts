@@ -12,7 +12,7 @@ import type {
 import type { ToolRegistry } from '../tools/registry.js'
 import type { ToolExecutor } from '../tools/executor.js'
 import type { PermissionManager } from './permissions.js'
-import { classifyIntent, filterToolsByIntent } from './intent.js'
+import { classifyIntent, filterToolsByIntent, detectFrustration, FRUSTRATION_NUDGE } from './intent.js'
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -138,6 +138,16 @@ export class AgentRunner {
           .join('')
       : ''
     const intent = classifyIntent(lastUserText)
+    const frustrated = detectFrustration(lastUserText)
+
+    // If user is frustrated, inject a nudge as a transient system-level hint
+    if (frustrated && lastUserMsg) {
+      conversationMessages.push({
+        role: 'user',
+        content: [{ type: 'text', text: FRUSTRATION_NUDGE }],
+        isMeta: true,
+      })
+    }
 
     try {
       while (true) {

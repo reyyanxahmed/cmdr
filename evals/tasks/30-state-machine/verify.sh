@@ -7,7 +7,9 @@ if [ ! -f state-machine.js ]; then
 fi
 
 node -e "
-const { StateMachine } = require('./state-machine');
+const mod = require('./state-machine');
+const StateMachine = typeof mod === 'function' ? mod : (mod.StateMachine || mod.default);
+if (!StateMachine) { console.log('FAIL: could not find StateMachine export'); process.exit(1); }
 
 const transitions = {
   'idle.start': 'running',

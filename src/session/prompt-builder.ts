@@ -1,8 +1,73 @@
 /**
- * PromptBuilder — composable prompt construction pipeline.
+ * PromptBuilder — modular prompt construction pipeline.
+ *
+ * Each module has a priority (lower = earlier) and a static flag.
+ * Static modules are identical across turns, enabling Ollama KV cache reuse.
  */
 
 import type { ProjectContext } from '../core/types.js'
+
+/* ── Module interface ──────────────────────────────────────────────── */
+
+export interface PromptModule {
+  id: string
+  content: string
+  priority: number       // lower = earlier in prompt
+  isStatic: boolean      // static modules never change (better for KV cache)
+}
+
+/* ── Priority constants ────────────────────────────────────────────── */
+
+export const PROMPT_PRIORITIES = {
+  ROLE: 10,
+  TOOL_POLICY: 20,
+  PROJECT_INSTRUCTIONS: 30,
+  SKILLS: 40,
+  PROJECT_CONTEXT: 50,
+  RUNTIME_CONTEXT: 60,
+  CONVERSATION_STATE: 70,
+} as const
+
+/* ── PromptBuilder class ───────────────────────────────────────────── */
+
+export class PromptBuilder {
+  private modules = new Map<string, PromptModule>()
+
+  addModule(mod: PromptModule): void {
+    this.modules.set(mod.id, mod)
+  }
+
+  updateModule(id: string, content: string): void {
+    const existing = this.modules.get(id)
+    if (existing) {
+      existing.content = content
+    }
+  }
+
+  removeModule(id: string): void {
+    this.modules.delete(id)
+  }
+
+  build(): string {
+    return [...this.modules.values()]
+      .sort((a, b) => a.priority - b.priority)
+      .map(m => m.content)
+      .filter(c => c.length > 0)
+      .join('\n\n')
+  }
+
+  /** Returns only static modules — for KV cache prefix estimation. */
+  getStaticPrefix(): string {
+    return [...this.modules.values()]
+      .filter(m => m.isStatic)
+      .sort((a, b) => a.priority - b.priority)
+      .map(m => m.content)
+      .filter(c => c.length > 0)
+      .join('\n\n')
+  }
+}
+
+/* ── Convenience: backward-compatible buildSystemPrompt ────────────── */
 
 export interface PromptBuildOptions {
   basePrompt: string
@@ -11,43 +76,70 @@ export interface PromptBuildOptions {
 }
 
 export function buildSystemPrompt(options: PromptBuildOptions): string {
-  const parts: string[] = [options.basePrompt]
-
-  // Inject project context
+  const builder = new PromptBuilder()
   const ctx = options.projectContext
-  const contextParts: string[] = []
 
-  if (ctx.language !== 'unknown') {
-    contextParts.push(`Language: ${ctx.language}`)
-  }
-  if (ctx.framework) {
-    contextParts.push(`Framework: ${ctx.framework}`)
-  }
-  if (ctx.packageManager) {
-    contextParts.push(`Package manager: ${ctx.packageManager}`)
-  }
-  if (ctx.gitBranch) {
-    contextParts.push(`Git branch: ${ctx.gitBranch}`)
-  }
+  // 10: Role — base system prompt (STATIC)
+  builder.addModule({
+    id: 'role',
+    content: options.basePrompt,
+    priority: PROMPT_PRIORITIES.ROLE,
+    isStatic: true,
+  })
 
-  if (contextParts.length > 0) {
-    parts.push(`\n\nProject context:\n${contextParts.join('\n')}\nRoot: ${ctx.rootDir}`)
-  }
-
-  // Inject CMDR.md workspace instructions
+  // 30: Project instructions — CMDR.md (STATIC per session)
   if (ctx.cmdrInstructions) {
-    parts.push(`\n\n<project_instructions>\nThe user has provided the following instructions for this project. Follow them unless they conflict with safety:\n\n${ctx.cmdrInstructions}\n</project_instructions>`)
+    builder.addModule({
+      id: 'project_instructions',
+      content: `<project_instructions>\nThe user has provided the following instructions for this project. Follow them unless they conflict with safety:\n\n${ctx.cmdrInstructions}\n</project_instructions>`,
+      priority: PROMPT_PRIORITIES.PROJECT_INSTRUCTIONS,
+      isStatic: true,
+    })
   }
 
-  // Inject active skills
+  // 40: Skills (STATIC per turn)
   if (ctx.activeSkills && ctx.activeSkills.length > 0) {
-    for (const skill of ctx.activeSkills) {
+    const skillBlocks = ctx.activeSkills.map(skill => {
       const scriptNote = skill.scripts.length > 0
         ? `\n\nHelper scripts available at:\n${skill.scripts.map(s => `  - ${s}`).join('\n')}`
         : ''
-      parts.push(`\n\n<skill name="${skill.name}">\n${skill.instructions}${scriptNote}\n</skill>`)
-    }
+      return `<skill name="${skill.name}">\n${skill.instructions}${scriptNote}\n</skill>`
+    })
+    builder.addModule({
+      id: 'skills',
+      content: skillBlocks.join('\n\n'),
+      priority: PROMPT_PRIORITIES.SKILLS,
+      isStatic: true,
+    })
   }
 
-  return parts.join('')
+  // 50: Project context (STATIC per session)
+  const contextParts: string[] = []
+  if (ctx.language !== 'unknown') contextParts.push(`Language: ${ctx.language}`)
+  if (ctx.framework) contextParts.push(`Framework: ${ctx.framework}`)
+  if (ctx.packageManager) contextParts.push(`Package manager: ${ctx.packageManager}`)
+
+  if (contextParts.length > 0) {
+    builder.addModule({
+      id: 'project_context',
+      content: `Project context:\n${contextParts.join('\n')}\nRoot: ${ctx.rootDir}`,
+      priority: PROMPT_PRIORITIES.PROJECT_CONTEXT,
+      isStatic: true,
+    })
+  }
+
+  // 60: Runtime context — dynamic per turn (git branch, etc.)
+  const runtimeParts: string[] = []
+  if (ctx.gitBranch) runtimeParts.push(`Git branch: ${ctx.gitBranch}`)
+
+  if (runtimeParts.length > 0) {
+    builder.addModule({
+      id: 'runtime_context',
+      content: `Runtime:\n${runtimeParts.join('\n')}`,
+      priority: PROMPT_PRIORITIES.RUNTIME_CONTEXT,
+      isStatic: false,
+    })
+  }
+
+  return builder.build()
 }

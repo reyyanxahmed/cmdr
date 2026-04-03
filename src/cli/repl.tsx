@@ -48,6 +48,7 @@ export interface ReplOptions {
   continue?: boolean
   verbose?: boolean
   team?: string
+  maxTurns?: number
 }
 
 export async function startRepl(options: ReplOptions): Promise<void> {
@@ -147,8 +148,12 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   // Create agent
   const currentModel = options.model
+  const agentConfig = { ...SOLO_CODER, model: currentModel, systemPrompt }
+  if (options.maxTurns) {
+    agentConfig.maxTurns = options.maxTurns
+  }
   const agent = new Agent(
-    { ...SOLO_CODER, model: currentModel, systemPrompt },
+    agentConfig,
     adapter,
     toolRegistry,
     cwd,

@@ -3,7 +3,9 @@ set -euo pipefail
 
 # Router exists and handles routes
 node -e "
-const { Router } = require('./router.js');
+const mod = require('./router.js');
+const Router = typeof mod === 'function' ? mod : (mod.Router || mod.default);
+if (!Router) { console.error('Could not find Router export'); process.exit(1); }
 const r = new Router();
 
 r.get('/users', () => 'all users');

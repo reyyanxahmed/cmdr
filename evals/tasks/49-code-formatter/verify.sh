@@ -23,9 +23,13 @@ for (let i = 0; i < lines.length; i++) {
   }
 }
 
-// Indentation should be multiples of 2 spaces (no tabs, no odd indentation)
+// Indentation should be even (multiples of 2 spaces, no tabs)
 for (const line of lines) {
   if (line.trim() === '') continue;
+  if (line.includes('\t')) {
+    console.error('Contains tabs:', line);
+    process.exit(1);
+  }
   const indent = line.match(/^( *)/)[1].length;
   if (indent % 2 !== 0) {
     console.error('Odd indentation:', indent, 'on line:', line);
@@ -33,16 +37,24 @@ for (const line of lines) {
   }
 }
 
-// Should have spaces around = operator (but not in === or !==)
-if (result.includes('x=1') || result.includes('y=2') || result.includes('msg=')) {
-  console.error('Missing spaces around = operator');
-  process.exit(1);
+// Assignment operators should have spaces: check that no identifier=value pattern exists 
+// (but allow ===, !==, >=, <=)
+const codeLines = result.split('\n').filter(l => l.trim() !== '');
+for (const line of codeLines) {
+  // Strip out ===, !==, >=, <= first, then check for bare =
+  const stripped = line.replace(/[!=><]==/g, '').replace(/[><=]=/g, '');
+  if (/\w=\S/.test(stripped) || /\S=\w/.test(stripped)) {
+    console.error('Missing spaces around = operator:', line);
+    process.exit(1);
+  }
 }
 
-// Opening braces should be on same line
+// Opening braces should be on same line (not alone on a line)
 const braceLines = result.split('\n').filter(l => l.trim() === '{');
 if (braceLines.length > 0) {
   console.error('Opening brace on own line');
   process.exit(1);
 }
+
+console.log('All formatter tests passed');
 "

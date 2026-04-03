@@ -38,6 +38,11 @@ export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock
 export interface LLMMessage {
   readonly role: 'user' | 'assistant'
   readonly content: ContentBlock[]
+  // Compaction metadata (append-only session pattern)
+  isCompactSummary?: boolean
+  isCompactBoundary?: boolean
+  isVisibleInTranscriptOnly?: boolean
+  isMeta?: boolean
 }
 
 export interface TokenUsage {

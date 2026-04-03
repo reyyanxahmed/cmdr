@@ -14,6 +14,7 @@ export interface CliArgs {
   verbose?: boolean
   cwd?: string
   team?: string
+  maxTurns?: number
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -61,6 +62,9 @@ export function parseArgs(argv: string[]): CliArgs {
       case '--verbose':
         args.verbose = true
         break
+      case '--max-turns':
+        args.maxTurns = parseInt(argv[++i], 10)
+        break
       case '--team':
       case '-t':
         args.team = argv[++i]
@@ -96,6 +100,7 @@ export function printHelp(): void {
     -t, --team <preset>      Run in team mode (review, fullstack, security)
     --cwd <path>             Set working directory
     --verbose                Print full tool output (default: collapsed)
+    --max-turns <n>          Maximum agent turns before stopping
     -h, --help               Show this help
     -v, --version            Show version
     --dangerously-skip-permissions  Auto-approve all tool calls (yolo mode)

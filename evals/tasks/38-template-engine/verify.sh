@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/workspace"
+# Verifier sets cwd to workspace; WORKSPACE env var also available
 
 node -e "
 const mod = require('./template.js');

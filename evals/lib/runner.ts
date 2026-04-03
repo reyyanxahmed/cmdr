@@ -47,6 +47,17 @@ function loadTaskDef(taskDir: string): EvalTask | null {
   const tier: Tier = tierMap[raw.tier] ?? 'basic'
   const id = basename(taskDir)
 
+  // Scale default timeout by tier difficulty
+  const tierTimeouts: Record<string, number> = {
+    basic: 60_000,
+    intermediate: 90_000,
+    advanced: 120_000,
+    hard: 180_000,
+    expert: 300_000,
+    extreme: 300_000,
+  }
+  const defaultTimeout = tierTimeouts[tier] ?? 120_000
+
   // Build verification specs from verify.sh (backward-compat) or v2 verify array
   let verify: VerificationSpec[] = []
   if (raw.verify && Array.isArray(raw.verify)) {
@@ -66,7 +77,7 @@ function loadTaskDef(taskDir: string): EvalTask | null {
     category: (raw.category as TaskCategory) ?? 'code_gen',
     description: raw.description ?? '',
     prompt: raw.prompt,
-    timeout: raw.timeout ?? 60_000,
+    timeout: raw.timeout ?? defaultTimeout,
     expectedTools: raw.expectedTools ?? [],
     verify,
     setup: raw.setup,
@@ -139,12 +150,25 @@ export async function runSingleTask(
 
   try {
     const timeout = opts.timeout ?? task.timeout
+
+    // Scale max-turns by tier difficulty
+    const tierMaxTurns: Record<string, number> = {
+      basic: 5,
+      intermediate: 10,
+      advanced: 15,
+      hard: 20,
+      expert: 30,
+      extreme: 30,
+    }
+    const maxTurns = tierMaxTurns[task.tier] ?? 15
+
     const result = execFileSync('node', [
       CMDR_BIN,
       '--cwd', ws.path,
       '-m', opts.model,
       '-u', opts.ollamaUrl,
       '--dangerously-skip-permissions',
+      '--max-turns', String(maxTurns),
       '-p', task.prompt,
     ], {
       timeout,
