@@ -10,6 +10,7 @@ import type {
   LLMResponse, StreamEvent, ContentBlock, TextBlock,
   ToolUseBlock, LLMToolDef, TokenUsage,
 } from '../core/types.js'
+import { getDefaultContextLength } from './model-registry.js'
 
 // ---------------------------------------------------------------------------
 // Types for Ollama API responses
@@ -128,11 +129,14 @@ export class OllamaAdapter implements LLMAdapter {
     const hasTools = options.tools && options.tools.length > 0
     const supportsNativeTools = hasTools ? await this.supportsTools(options.model) : false
 
+    const contextLength = getDefaultContextLength(options.model)
+
     const body: Record<string, unknown> = {
       model: options.model,
       messages: this.convertMessages(messages, options.systemPrompt, !supportsNativeTools && hasTools ? options.tools : undefined),
       stream: false,
       options: {
+        num_ctx: contextLength,
         ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
         ...(options.maxTokens !== undefined ? { num_predict: options.maxTokens } : {}),
       },
@@ -204,11 +208,14 @@ export class OllamaAdapter implements LLMAdapter {
     const hasTools = options.tools && options.tools.length > 0
     const supportsNativeTools = hasTools ? await this.supportsTools(options.model) : false
 
+    const contextLength = getDefaultContextLength(options.model)
+
     const body: Record<string, unknown> = {
       model: options.model,
       messages: this.convertMessages(messages, options.systemPrompt, !supportsNativeTools && hasTools ? options.tools : undefined),
       stream: true,
       options: {
+        num_ctx: contextLength,
         ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
         ...(options.maxTokens !== undefined ? { num_predict: options.maxTokens } : {}),
       },

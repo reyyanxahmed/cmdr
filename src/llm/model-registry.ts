@@ -36,6 +36,51 @@ export function getDefaultContextLength(model: string): number {
   return info?.contextLength ?? 8192
 }
 
+/**
+ * Query Ollama /api/show for the actual context length of a model.
+ * Falls back to getDefaultContextLength if the query fails.
+ */
+export async function resolveContextLength(
+  model: string,
+  ollamaUrl = 'http://localhost:11434',
+): Promise<number> {
+  // If we know the model, trust our registry
+  const info = getModelInfo(model)
+  if (info) return info.contextLength
+
+  // Query Ollama for unknown models
+  try {
+    const res = await fetch(`${ollamaUrl}/api/show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: model }),
+    })
+    if (res.ok) {
+      const data = await res.json() as Record<string, unknown>
+      // Ollama returns model_info with context length keys like
+      // "<arch>.context_length" or "context_length"
+      const modelInfo = data.model_info as Record<string, unknown> | undefined
+      if (modelInfo) {
+        for (const [key, value] of Object.entries(modelInfo)) {
+          if (key.endsWith('context_length') && typeof value === 'number') {
+            return value
+          }
+        }
+      }
+      // Also check parameters string for num_ctx
+      const params = data.parameters as string | undefined
+      if (params) {
+        const match = params.match(/num_ctx\s+(\d+)/)
+        if (match) return parseInt(match[1], 10)
+      }
+    }
+  } catch {
+    // Network error — fall through
+  }
+
+  return 8192
+}
+
 export function getRecommendedModel(tier: 'lightweight' | 'midrange' | 'heavy'): string {
   const model = KNOWN_MODELS.find(m => m.recommended === tier && m.name.includes('coder'))
   return model?.name ?? 'qwen2.5-coder:14b'
