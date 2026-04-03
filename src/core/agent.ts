@@ -145,6 +145,11 @@ export class Agent {
     this.cwd = cwd
   }
 
+  /** Update the model used for subsequent LLM calls. */
+  setModel(model: string): void {
+    (this.config as { model?: string }).model = model
+  }
+
   private createRunner(): AgentRunner {
     return new AgentRunner(this.adapter, this.toolRegistry, this.toolExecutor, {
       model: this.config.model ?? 'qwen2.5-coder:14b',

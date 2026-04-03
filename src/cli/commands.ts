@@ -79,11 +79,27 @@ registerCommand({
 
 registerCommand({
   name: 'model',
-  description: 'Switch model (e.g. /model qwen2.5-coder:32b)',
+  description: 'Switch model (e.g. /model qwen2.5-coder:32b or /model 3)',
   execute: async (args, context) => {
     if (!args) {
-      return renderInfo('Usage: /model <model-name>')
+      return renderInfo('Usage: /model <model-name> or /model <number> (see /models)')
     }
+
+    // Support switching by number (from /models list)
+    const num = parseInt(args, 10)
+    if (!isNaN(num) && num > 0) {
+      const adapter = context.adapter as any
+      if (adapter?.listModels) {
+        const models = await adapter.listModels()
+        if (num <= models.length) {
+          const model = models[num - 1]
+          context.switchModel(model)
+          return renderInfo(`Switched to model: ${GREEN(model)}`)
+        }
+        return renderInfo(`Invalid number. Use 1-${models.length} (see /models)`)
+      }
+    }
+
     context.switchModel(args)
     return renderInfo(`Switched to model: ${GREEN(args)}`)
   },
@@ -111,30 +127,9 @@ registerCommand({
           return `  ${GREEN(`${i + 1}.`)} ${WHITE(m)}${current}`
         }),
         '',
-        `  ${DIM('Type a number to switch, or press Enter to cancel.')}`,
+        `  ${DIM('Switch with:')} ${GREEN('/model <name>')} ${DIM('or')} ${GREEN('/model <number>')}`,
       ]
-      console.log(lines.join('\n'))
-
-      // Interactive selection
-      const readline = await import('readline')
-      const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-        terminal: true,
-      })
-      const answer = await new Promise<string>((resolve) => {
-        rl.question(`  ${CYAN('Select model')} ${DIM(`[1-${models.length}]`)}: `, (ans: string) => {
-          rl.close()
-          resolve(ans.trim())
-        })
-      })
-      if (!answer) return ''
-      const idx = parseInt(answer, 10) - 1
-      if (idx >= 0 && idx < models.length) {
-        context.switchModel(models[idx])
-        return renderInfo(`Switched to model: ${GREEN(models[idx])}`)
-      }
-      return ''
+      return lines.join('\n')
     } catch {
       return `  ${DIM('Could not connect to Ollama. Is it running?')}`
     }

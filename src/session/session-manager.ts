@@ -84,6 +84,15 @@ export class SessionManager {
     this.session.tokenCount = 0
   }
 
+  /** Update the max context tokens (e.g. after switching models). */
+  updateContextLength(maxContextTokens: number): void {
+    this.session.maxContextTokens = maxContextTokens
+    this.compactionConfig = {
+      ...this.compactionConfig,
+      maxContextTokens,
+    }
+  }
+
   getTokenUsage(): TokenUsage {
     return {
       input_tokens: this.session.tokenCount,
