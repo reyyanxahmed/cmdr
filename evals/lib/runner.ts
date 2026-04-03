@@ -144,6 +144,7 @@ export async function runSingleTask(
       '--cwd', ws.path,
       '-m', opts.model,
       '-u', opts.ollamaUrl,
+      '--dangerously-skip-permissions',
       '-p', task.prompt,
     ], {
       timeout,
