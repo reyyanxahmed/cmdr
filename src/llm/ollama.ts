@@ -176,8 +176,8 @@ export class OllamaAdapter implements LLMAdapter {
           input: tc.function.arguments,
         } as ToolUseBlock)
       }
-    } else if (hasTools && !supportsNativeTools && data.message.content) {
-      // Parse prompt-based tool calls from text
+    } else if (hasTools && data.message.content) {
+      // Parse prompt-based tool calls from text (fallback for all models)
       const parsed = this.parsePromptBasedToolCalls(data.message.content)
       content.push(...parsed)
     } else {
@@ -250,6 +250,7 @@ export class OllamaAdapter implements LLMAdapter {
     let totalInputTokens = 0
     let totalOutputTokens = 0
     let model = options.model
+    let nativeToolCallsEmitted = false
 
     try {
       while (true) {
@@ -278,6 +279,7 @@ export class OllamaAdapter implements LLMAdapter {
           }
 
           if (chunk.message?.tool_calls) {
+            nativeToolCallsEmitted = true
             for (const tc of chunk.message.tool_calls) {
               yield {
                 type: 'tool_use',
@@ -301,12 +303,14 @@ export class OllamaAdapter implements LLMAdapter {
       reader.releaseLock()
     }
 
-    // Check for prompt-based tool calls if model doesn't support native tools
-    if (hasTools && !supportsNativeTools && fullText) {
+    // Fallback: parse prompt-based tool calls from text if no native tool calls were emitted
+    if (hasTools && fullText && !nativeToolCallsEmitted) {
       const parsed = this.parsePromptBasedToolCalls(fullText)
       const toolBlocks = parsed.filter(b => b.type === 'tool_use')
-      for (const block of toolBlocks) {
-        yield { type: 'tool_use', data: block }
+      if (toolBlocks.length > 0) {
+        for (const block of toolBlocks) {
+          yield { type: 'tool_use', data: block }
+        }
       }
     }
 
@@ -428,12 +432,15 @@ After receiving a tool result, continue your analysis.`
 
   private parsePromptBasedToolCalls(text: string): ContentBlock[] {
     const content: ContentBlock[] = []
+
+    // Strategy 1: ```tool_call\n{JSON}\n``` format
     const toolCallRegex = /```tool_call\s*\n([\s\S]*?)\n```/g
     let lastIndex = 0
     let match: RegExpExecArray | null
+    let foundToolCalls = false
 
     while ((match = toolCallRegex.exec(text)) !== null) {
-      // Add text before the tool call
+      foundToolCalls = true
       if (match.index > lastIndex) {
         const before = text.slice(lastIndex, match.index).trim()
         if (before) content.push({ type: 'text', text: before })
@@ -450,21 +457,62 @@ After receiving a tool result, continue your analysis.`
           })
         }
       } catch {
-        // Malformed JSON — keep as text
         content.push({ type: 'text', text: match[0] })
       }
 
       lastIndex = match.index + match[0].length
     }
 
-    // Add remaining text
-    if (lastIndex < text.length) {
-      const remainder = text.slice(lastIndex).trim()
-      if (remainder) content.push({ type: 'text', text: remainder })
+    if (foundToolCalls) {
+      if (lastIndex < text.length) {
+        const remainder = text.slice(lastIndex).trim()
+        if (remainder) content.push({ type: 'text', text: remainder })
+      }
+      return content
     }
 
-    // If no tool calls found, return as pure text
-    if (content.length === 0 && text) {
+    // Strategy 2: XML <function=name><parameter=key>value</parameter></function> format
+    const xmlToolRegex = /<function=(\w+)>([\s\S]*?)<\/function>/g
+    const paramRegex = /<parameter=(\w+)>([\s\S]*?)<\/parameter>/g
+    lastIndex = 0
+
+    while ((match = xmlToolRegex.exec(text)) !== null) {
+      foundToolCalls = true
+      if (match.index > lastIndex) {
+        const before = text.slice(lastIndex, match.index).trim()
+        if (before) content.push({ type: 'text', text: before })
+      }
+
+      const toolName = match[1]
+      const paramsBlock = match[2]
+      const input: Record<string, string> = {}
+
+      let paramMatch: RegExpExecArray | null
+      while ((paramMatch = paramRegex.exec(paramsBlock)) !== null) {
+        input[paramMatch[1]] = paramMatch[2].trim()
+      }
+      paramRegex.lastIndex = 0 // Reset for next tool call
+
+      content.push({
+        type: 'tool_use',
+        id: `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        name: toolName,
+        input,
+      })
+
+      lastIndex = match.index + match[0].length
+    }
+
+    if (foundToolCalls) {
+      if (lastIndex < text.length) {
+        const remainder = text.slice(lastIndex).trim()
+        if (remainder) content.push({ type: 'text', text: remainder })
+      }
+      return content
+    }
+
+    // No tool calls found — return as pure text
+    if (text) {
       content.push({ type: 'text', text })
     }
 
