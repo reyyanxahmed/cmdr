@@ -11,9 +11,10 @@ import { parseArgs, printHelp } from '../src/cli/args.js'
 import { startRepl } from '../src/cli/repl.js'
 import { GREEN, PURPLE, DIM, renderError, WHITE, CYAN } from '../src/cli/theme.js'
 import { OllamaAdapter } from '../src/llm/ollama.js'
+import { checkForUpdate } from '../src/cli/update-checker.js'
 import * as readline from 'readline'
 
-const VERSION = '1.1.0'
+const VERSION = '1.2.0'
 
 /** Prompt user to pick a model from the list. */
 function promptModelSelection(models: string[]): Promise<string> {
@@ -92,6 +93,9 @@ async function main(): Promise<void> {
     const target = resolve(args.cwd)
     process.chdir(target)
   }
+
+  // Non-blocking update check (fire-and-forget, prints after welcome banner)
+  checkForUpdate(VERSION).catch(() => {})
 
   try {
     await startRepl({
