@@ -5,6 +5,7 @@
 import { spawn } from 'child_process'
 import { z } from 'zod'
 import { defineTool } from '../registry.js'
+import { sanitizeBashCommand } from './bash-security.js'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 
@@ -22,10 +23,16 @@ export const bashTool = defineTool({
   }),
 
   execute: async (input, context) => {
+    // Security check
+    const check = sanitizeBashCommand(input.command)
+    if (!check.safe) {
+      return { data: `Command blocked: ${check.reason}`, isError: true }
+    }
+
     const timeoutMs = input.timeout ?? DEFAULT_TIMEOUT_MS
     const cwd = input.cwd ?? context.cwd ?? process.cwd()
 
-    const { stdout, stderr, exitCode } = await runCommand(input.command, cwd, timeoutMs, context.abortSignal)
+    const { stdout, stderr, exitCode } = await runCommand(check.sanitized, cwd, timeoutMs, context.abortSignal)
 
     const parts: string[] = []
     if (stdout) parts.push(stdout)

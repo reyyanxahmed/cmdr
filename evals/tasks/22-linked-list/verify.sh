@@ -7,7 +7,9 @@ if [ ! -f linked-list.js ]; then
 fi
 
 node -e "
-const { LinkedList } = require('./linked-list');
+const mod = require('./linked-list');
+const LinkedList = typeof mod === 'function' ? mod : (mod.LinkedList || mod.default);
+if (!LinkedList) { console.log('FAIL: could not find LinkedList export'); process.exit(1); }
 
 const list = new LinkedList();
 

@@ -182,6 +182,8 @@ async function summarizeMessages(
       type: 'text',
       text: `[Previous conversation summary]\n${summaryText}\n[End of summary — recent conversation follows]`,
     }],
+    isCompactSummary: true,
+    isCompactBoundary: true,
   }
 }
 
@@ -213,5 +215,7 @@ function buildFallbackSummary(messages: LLMMessage[]): LLMMessage {
   return {
     role: 'user',
     content: [{ type: 'text', text: parts.join('\n') }],
+    isCompactSummary: true,
+    isCompactBoundary: true,
   }
 }

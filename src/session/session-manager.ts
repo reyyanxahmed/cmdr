@@ -1,5 +1,8 @@
 /**
- * SessionManager — conversation history with token counting and compaction.
+ * SessionManager — append-only conversation history with token counting and compaction.
+ *
+ * Messages are never deleted. On compaction, old messages are flagged as
+ * transcript-only and a compact summary is inserted as a boundary.
  */
 
 import type { LLMMessage, LLMAdapter, SessionState, ProjectContext, TokenUsage } from '../core/types.js'
@@ -11,9 +14,12 @@ import {
   type CompactionConfig,
 } from './compaction.js'
 
+const MAX_COMPACT_FAILURES = 3
+
 export class SessionManager {
   private session: SessionState
   private compactionConfig: CompactionConfig
+  private consecutiveCompactFailures = 0
 
   constructor(projectContext: ProjectContext, maxContextTokens = 32768) {
     this.session = {
@@ -32,13 +38,22 @@ export class SessionManager {
   }
 
   get id(): string { return this.session.id }
-  get messages(): LLMMessage[] { return this.session.messages }
   get tokenCount(): number { return this.session.tokenCount }
   get projectContext(): ProjectContext { return this.session.projectContext }
 
+  /** All messages including transcript-only (full history). */
+  get messages(): LLMMessage[] { return this.session.messages }
+
+  /** Messages that should be sent to the LLM API (excludes transcript-only and meta). */
+  getApiMessages(): LLMMessage[] {
+    return this.session.messages.filter(
+      m => !m.isVisibleInTranscriptOnly && !m.isMeta,
+    )
+  }
+
   addMessage(message: LLMMessage): void {
     this.session.messages.push(message)
-    this.session.tokenCount = countMessageTokens(this.session.messages as any)
+    this.session.tokenCount = countMessageTokens(this.getApiMessages() as any)
     this.session.lastActivity = new Date()
   }
 
@@ -46,42 +61,70 @@ export class SessionManager {
     for (const msg of messages) {
       this.session.messages.push(msg)
     }
-    this.session.tokenCount = countMessageTokens(this.session.messages as any)
+    this.session.tokenCount = countMessageTokens(this.getApiMessages() as any)
     this.session.lastActivity = new Date()
   }
 
   shouldCompact(): boolean {
-    return checkCompact(this.session.messages, this.session.tokenCount, this.compactionConfig)
+    if (this.consecutiveCompactFailures >= MAX_COMPACT_FAILURES) {
+      return false // Circuit breaker: stop trying after repeated failures
+    }
+    return checkCompact(this.getApiMessages(), this.session.tokenCount, this.compactionConfig)
   }
 
   /**
    * Multi-stage compaction: truncate tool results → LLM summary → hard truncation.
-   * Returns the number of tokens saved.
+   * Uses append-only pattern: old messages are flagged, not removed.
    */
   async compact(adapter: LLMAdapter, model: string): Promise<{ before: number; after: number; tokensSaved: number }> {
-    const before = this.session.tokenCount
-    const beforeCount = this.session.messages.length
+    const apiMessages = this.getApiMessages()
+    const before = apiMessages.length
+    const beforeTokens = this.session.tokenCount
 
-    const result = await compactHistory(
-      this.session.messages,
-      this.compactionConfig,
-      adapter,
-      model,
-    )
+    try {
+      const result = await compactHistory(
+        apiMessages,
+        this.compactionConfig,
+        adapter,
+        model,
+      )
 
-    this.session.messages = result.messages
-    this.session.tokenCount = countMessageTokens(this.session.messages as any)
+      // Flag old API messages as transcript-only
+      for (const msg of this.session.messages) {
+        if (!msg.isVisibleInTranscriptOnly && !msg.isMeta) {
+          // If this message isn't in the compacted result, flag it
+          if (!result.messages.includes(msg)) {
+            msg.isVisibleInTranscriptOnly = true
+          }
+        }
+      }
 
-    return {
-      before: beforeCount,
-      after: this.session.messages.length,
-      tokensSaved: result.tokensSaved,
+      // Insert new messages from compaction (summary boundary etc.)
+      for (const msg of result.messages) {
+        if (msg.isCompactSummary || msg.isCompactBoundary) {
+          // Find insertion point: after all existing messages
+          this.session.messages.push(msg)
+        }
+      }
+
+      this.session.tokenCount = countMessageTokens(this.getApiMessages() as any)
+      this.consecutiveCompactFailures = 0
+
+      return {
+        before,
+        after: this.getApiMessages().length,
+        tokensSaved: beforeTokens - this.session.tokenCount,
+      }
+    } catch (err) {
+      this.consecutiveCompactFailures++
+      throw err
     }
   }
 
   clear(): void {
     this.session.messages = []
     this.session.tokenCount = 0
+    this.consecutiveCompactFailures = 0
   }
 
   /** Update the max context tokens (e.g. after switching models). */

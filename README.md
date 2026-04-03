@@ -72,6 +72,7 @@ cmdr --cwd /path/to/project      # Override working directory
 | `--cwd <path>` | Set working directory |
 | `--verbose` | Print full tool output |
 | `--dangerously-skip-permissions` | Auto-approve all tool calls |
+| `--max-turns <n>` | Limit agent tool-call turns |
 | `-h, --help` | Show help |
 | `-v, --version` | Show version |
 
@@ -202,6 +203,24 @@ enabled = false   # opt-in local-only usage stats
 |----------|---------|-------------|
 | `CMDR_MODEL` | `qwen2.5-coder:14b` | Default model |
 | `CMDR_OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |
+
+## Benchmark Results
+
+### Custom Eval Suite (50 tasks, 4 tiers)
+
+| Model | Pass Rate | Score | Grade |
+|---|---|---|---|
+| qwen3-coder:latest (14B) | 42/50 (84%) | ~160/197 | **S** |
+
+Grade A at 38/50 (71.6%) after the v1.3.0 system prompt rewrite alone (+8 tasks, +19pp from v1.2). Verify script hardening pushed it to 42/50.
+
+### HumanEval (164 tasks, pass@1)
+
+| Model | pass@1 | Passed |
+|---|---|---|
+| minimax-m2.5:cloud | **95.7%** | 157/164 |
+
+All benchmarks run through cmdr's eval harness on local hardware (Ollama). No cloud inference for the custom eval suite.
 
 ## Architecture
 

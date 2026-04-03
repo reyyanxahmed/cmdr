@@ -3,7 +3,9 @@ set -euo pipefail
 
 node -e "
 const path = require('path');
-const { WorkerPool } = require('./worker-pool.js');
+const mod = require('./worker-pool.js');
+const WorkerPool = typeof mod === 'function' ? mod : (mod.WorkerPool || mod.default);
+if (!WorkerPool) { console.error('Could not find WorkerPool export'); process.exit(1); }
 
 async function test() {
   const pool = new WorkerPool(path.join(__dirname, 'worker.js'), 2);

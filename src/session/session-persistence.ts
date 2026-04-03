@@ -1,8 +1,15 @@
 /**
  * Session persistence — save/load conversation sessions to ~/.cmdr/sessions/.
+ *
+ * Uses append-only JSONL (one JSON object per line) for crash-safe writes.
+ * Each line is one of:
+ *   {"type":"meta","sessionId":"...","model":"...","projectRoot":"...","createdAt":"..."}
+ *   {"type":"message","role":"user","content":[...],"timestamp":"..."}
+ *   {"type":"compact","boundaryIndex":42,"summary":"...","timestamp":"..."}
  */
 
-import { readFile, writeFile, mkdir, readdir, stat } from 'fs/promises'
+import { readFile, writeFile, mkdir, readdir, appendFile } from 'fs/promises'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import type { LLMMessage, SessionState, ProjectContext } from '../core/types.js'
@@ -55,6 +62,97 @@ function extractSummary(messages: LLMMessage[]): string {
   return ''
 }
 
+// ---------------------------------------------------------------------------
+// JSONL helpers
+// ---------------------------------------------------------------------------
+
+interface JournalMeta {
+  type: 'meta'
+  sessionId: string
+  model: string
+  projectRoot: string
+  createdAt: string
+}
+
+interface JournalMessage {
+  type: 'message'
+  role: string
+  content: any
+  timestamp: string
+  isCompactSummary?: boolean
+  isCompactBoundary?: boolean
+  isVisibleInTranscriptOnly?: boolean
+  isMeta?: boolean
+}
+
+interface JournalCompact {
+  type: 'compact'
+  boundaryIndex: number
+  summary: string
+  timestamp: string
+}
+
+type JournalLine = JournalMeta | JournalMessage | JournalCompact
+
+function journalPath(sessionId: string): string {
+  return join(SESSIONS_DIR, `${sessionId}.jsonl`)
+}
+
+/** Append a single message to the JSONL session file. */
+export async function appendSessionMessage(
+  sessionId: string,
+  msg: LLMMessage,
+): Promise<void> {
+  await ensureDir(SESSIONS_DIR)
+  const line: JournalMessage = {
+    type: 'message',
+    role: msg.role,
+    content: msg.content,
+    timestamp: new Date().toISOString(),
+    ...(msg.isCompactSummary ? { isCompactSummary: true } : {}),
+    ...(msg.isCompactBoundary ? { isCompactBoundary: true } : {}),
+    ...(msg.isVisibleInTranscriptOnly ? { isVisibleInTranscriptOnly: true } : {}),
+    ...(msg.isMeta ? { isMeta: true } : {}),
+  }
+  await appendFile(journalPath(sessionId), JSON.stringify(line) + '\n', 'utf-8')
+}
+
+/** Write session meta header (called once at session start). */
+export async function writeSessionMeta(
+  sessionId: string,
+  model: string,
+  projectRoot: string,
+): Promise<void> {
+  await ensureDir(SESSIONS_DIR)
+  const line: JournalMeta = {
+    type: 'meta',
+    sessionId,
+    model,
+    projectRoot,
+    createdAt: new Date().toISOString(),
+  }
+  await appendFile(journalPath(sessionId), JSON.stringify(line) + '\n', 'utf-8')
+}
+
+/** Append a compaction marker to the journal. */
+export async function appendCompactMarker(
+  sessionId: string,
+  boundaryIndex: number,
+  summary: string,
+): Promise<void> {
+  const line: JournalCompact = {
+    type: 'compact',
+    boundaryIndex,
+    summary,
+    timestamp: new Date().toISOString(),
+  }
+  await appendFile(journalPath(sessionId), JSON.stringify(line) + '\n', 'utf-8')
+}
+
+// ---------------------------------------------------------------------------
+// Save / Load
+// ---------------------------------------------------------------------------
+
 export async function saveSession(
   sessionState: SessionState,
   model: string,
@@ -72,6 +170,7 @@ export async function saveSession(
     summary: extractSummary(sessionState.messages),
   }
 
+  // Write atomic JSON snapshot (for listSessions/quick load)
   const filePath = join(SESSIONS_DIR, `${sessionState.id}.json`)
   await writeFile(filePath, JSON.stringify(saved, null, 2), 'utf-8')
   return sessionState.id
@@ -79,9 +178,51 @@ export async function saveSession(
 
 export async function loadSession(sessionId: string): Promise<SavedSession | null> {
   try {
-    const filePath = join(SESSIONS_DIR, `${sessionId}.json`)
-    const data = await readFile(filePath, 'utf-8')
-    return JSON.parse(data) as SavedSession
+    // Try JSON snapshot first (faster)
+    const jsonPath = join(SESSIONS_DIR, `${sessionId}.json`)
+    if (existsSync(jsonPath)) {
+      const data = await readFile(jsonPath, 'utf-8')
+      return JSON.parse(data) as SavedSession
+    }
+
+    // Fallback: reconstruct from JSONL journal
+    const jPath = journalPath(sessionId)
+    if (!existsSync(jPath)) return null
+
+    const content = await readFile(jPath, 'utf-8')
+    const lines = content.trim().split('\n').filter(Boolean)
+
+    let meta: JournalMeta | null = null
+    const messages: LLMMessage[] = []
+
+    for (const line of lines) {
+      const entry = JSON.parse(line) as JournalLine
+      if (entry.type === 'meta') {
+        meta = entry
+      } else if (entry.type === 'message') {
+        messages.push({
+          role: entry.role as LLMMessage['role'],
+          content: entry.content,
+          ...(entry.isCompactSummary ? { isCompactSummary: true } : {}),
+          ...(entry.isCompactBoundary ? { isCompactBoundary: true } : {}),
+          ...(entry.isVisibleInTranscriptOnly ? { isVisibleInTranscriptOnly: true } : {}),
+          ...(entry.isMeta ? { isMeta: true } : {}),
+        })
+      }
+    }
+
+    if (!meta) return null
+
+    return {
+      id: meta.sessionId,
+      messages,
+      projectRoot: meta.projectRoot,
+      model: meta.model,
+      createdAt: meta.createdAt,
+      lastActivity: new Date().toISOString(),
+      toolsUsed: extractToolsUsed(messages),
+      summary: extractSummary(messages),
+    }
   } catch {
     return null
   }

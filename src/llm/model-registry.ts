@@ -22,8 +22,16 @@ const KNOWN_MODELS: ModelInfo[] = [
   { name: 'llama3.1:70b', contextLength: 131072, supportsTools: true, parameterSize: '70B', recommended: 'heavy' },
   { name: 'llama3.2:3b', contextLength: 131072, supportsTools: true, parameterSize: '3B', recommended: 'lightweight' },
   { name: 'mistral-nemo:12b', contextLength: 128000, supportsTools: true, parameterSize: '12B', recommended: 'midrange' },
-  { name: 'deepseek-coder-v2:16b', contextLength: 65536, supportsTools: false, parameterSize: '16B', recommended: 'midrange' },
+  { name: 'gemma4:26b', contextLength: 262144, supportsTools: false, parameterSize: '25.8B', recommended: 'heavy' },
+  { name: 'gemma4:e4b', contextLength: 131072, supportsTools: false, parameterSize: '4B', recommended: 'lightweight' },
+  { name: 'gemma4:e2b', contextLength: 131072, supportsTools: false, parameterSize: '2B', recommended: 'lightweight' },
+  { name: 'deepseek-coder-v2:16b', contextLength: 131072, supportsTools: true, parameterSize: '16B', recommended: 'midrange' },
+  { name: 'deepseek-coder:6.7b', contextLength: 16384, supportsTools: true, parameterSize: '6.7B', recommended: 'lightweight' },
   { name: 'codellama:34b', contextLength: 16384, supportsTools: false, parameterSize: '34B', recommended: 'heavy' },
+  { name: 'dolphin3:latest', contextLength: 131072, supportsTools: false, parameterSize: '8B', recommended: 'lightweight' },
+  { name: 'phi-3:latest', contextLength: 131072, supportsTools: true, parameterSize: '3.8B', recommended: 'lightweight' },
+  { name: 'phi-4:latest', contextLength: 16384, supportsTools: true, parameterSize: '14B', recommended: 'midrange' },
+  { name: 'command-r:latest', contextLength: 131072, supportsTools: true, parameterSize: '35B', recommended: 'heavy' },
   { name: 'minimax-m2.5:cloud', contextLength: 1048576, supportsTools: true, parameterSize: 'cloud', recommended: 'heavy' },
 ]
 

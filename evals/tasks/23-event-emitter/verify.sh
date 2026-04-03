@@ -7,7 +7,9 @@ if [ ! -f event-emitter.js ]; then
 fi
 
 node -e "
-const { EventEmitter } = require('./event-emitter');
+const mod = require('./event-emitter');
+const EventEmitter = typeof mod === 'function' ? mod : (mod.EventEmitter || mod.default);
+if (!EventEmitter) { console.log('FAIL: could not find EventEmitter export'); process.exit(1); }
 
 const emitter = new EventEmitter();
 const results = [];

@@ -44,16 +44,52 @@ interface OllamaModelInfo {
 }
 
 // ---------------------------------------------------------------------------
-// Models known to support native tool calling via Ollama
+// Per-model-family configuration
 // ---------------------------------------------------------------------------
 
-const TOOL_CAPABLE_FAMILIES = new Set([
-  'qwen2', 'qwen2.5', 'qwen3', 'qwen3moe',
-  'llama3.1', 'llama3.2', 'llama3.3', 'llama4',
-  'mistral', 'mistral-nemo', 'command-r', 'firefunction',
-  'granite', 'nemotron', 'hermes3',
-  'minimax',
-])
+interface ModelFamilyConfig {
+  supportsNativeTools: boolean
+  needsPromptInjection: boolean
+  thinkingMode: 'auto' | 'disabled' | 'strip'
+  xmlToolFormat: boolean      // Parse <function=name> XML in text output
+  jsonToolFormat: boolean     // Parse ```tool_call JSON in text output
+}
+
+const MODEL_FAMILY_CONFIGS: Record<string, ModelFamilyConfig> = {
+  qwen2:    { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: true,  jsonToolFormat: true },
+  'qwen2.5': { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: true,  jsonToolFormat: true },
+  qwen3:    { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: true,  jsonToolFormat: true },
+  qwen3moe: { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: true,  jsonToolFormat: true },
+  gemma4:   { supportsNativeTools: false, needsPromptInjection: true,  thinkingMode: 'disabled', xmlToolFormat: false, jsonToolFormat: true },
+  'llama3.1': { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: false, jsonToolFormat: true },
+  'llama3.2': { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: false, jsonToolFormat: true },
+  'llama3.3': { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: false, jsonToolFormat: true },
+  llama4:   { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: false, jsonToolFormat: true },
+  mistral:  { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: false, jsonToolFormat: true },
+  'mistral-nemo': { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: false, jsonToolFormat: true },
+  'command-r': { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: false, jsonToolFormat: true },
+  minimax:  { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: false, jsonToolFormat: true },
+  deepseek: { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: false, jsonToolFormat: true },
+  dolphin:  { supportsNativeTools: false, needsPromptInjection: true,  thinkingMode: 'auto',     xmlToolFormat: false, jsonToolFormat: true },
+  phi:      { supportsNativeTools: true,  needsPromptInjection: false, thinkingMode: 'auto',     xmlToolFormat: false, jsonToolFormat: true },
+  default:  { supportsNativeTools: false, needsPromptInjection: true,  thinkingMode: 'auto',     xmlToolFormat: true,  jsonToolFormat: true },
+}
+
+/** Resolve the family config for a detected model family string. */
+function getFamilyConfig(family: string): ModelFamilyConfig {
+  // Exact match first
+  if (MODEL_FAMILY_CONFIGS[family]) return MODEL_FAMILY_CONFIGS[family]
+  // Prefix match (e.g. 'qwen3-coder' matches 'qwen3')
+  for (const key of Object.keys(MODEL_FAMILY_CONFIGS)) {
+    if (key !== 'default' && family.startsWith(key)) return MODEL_FAMILY_CONFIGS[key]
+  }
+  return MODEL_FAMILY_CONFIGS.default
+}
+
+/** Strip thinking channel markers from model output. */
+function stripThinkingMarkers(text: string): string {
+  return text.replace(/<\|channel>thought[\s\S]*?<channel\|>/g, '').replace(/<channel\|>/g, '')
+}
 
 // ---------------------------------------------------------------------------
 // OllamaAdapter
@@ -62,7 +98,7 @@ const TOOL_CAPABLE_FAMILIES = new Set([
 export class OllamaAdapter implements LLMAdapter {
   readonly name = 'ollama'
   private readonly baseUrl: string
-  private toolCapabilityCache = new Map<string, boolean>()
+  private familyCache = new Map<string, string>()
 
   constructor(baseUrl = 'http://localhost:11434') {
     this.baseUrl = baseUrl.replace(/\/$/, '')
@@ -86,9 +122,9 @@ export class OllamaAdapter implements LLMAdapter {
     return data.models.map(m => m.name)
   }
 
-  /** Check if a specific model supports native tool calling. */
-  async supportsTools(model: string): Promise<boolean> {
-    const cached = this.toolCapabilityCache.get(model)
+  /** Detect the model family via Ollama /api/show (cached). */
+  async getModelFamily(model: string): Promise<string> {
+    const cached = this.familyCache.get(model)
     if (cached !== undefined) return cached
 
     try {
@@ -99,26 +135,24 @@ export class OllamaAdapter implements LLMAdapter {
       })
 
       if (!res.ok) {
-        this.toolCapabilityCache.set(model, false)
-        return false
+        this.familyCache.set(model, 'unknown')
+        return 'unknown'
       }
 
       const info = await res.json() as OllamaModelInfo
-      const family = info.details?.family?.toLowerCase() ?? ''
-
-      const supports = TOOL_CAPABLE_FAMILIES.has(family) ||
-        family.includes('qwen') ||
-        family.includes('llama3') ||
-        family.includes('llama4') ||
-        family.includes('mistral') ||
-        family.includes('gemma')
-
-      this.toolCapabilityCache.set(model, supports)
-      return supports
+      const family = info.details?.family?.toLowerCase() ?? 'unknown'
+      this.familyCache.set(model, family)
+      return family
     } catch {
-      this.toolCapabilityCache.set(model, false)
-      return false
+      this.familyCache.set(model, 'unknown')
+      return 'unknown'
     }
+  }
+
+  /** Check if a specific model supports native tool calling. */
+  async supportsTools(model: string): Promise<boolean> {
+    const family = await this.getModelFamily(model)
+    return getFamilyConfig(family).supportsNativeTools
   }
 
   // -----------------------------------------------------------------------
@@ -127,13 +161,16 @@ export class OllamaAdapter implements LLMAdapter {
 
   async chat(messages: LLMMessage[], options: LLMChatOptions): Promise<LLMResponse> {
     const hasTools = options.tools && options.tools.length > 0
-    const supportsNativeTools = hasTools ? await this.supportsTools(options.model) : false
+    const family = await this.getModelFamily(options.model)
+    const config = getFamilyConfig(family)
+    const supportsNativeTools = hasTools ? config.supportsNativeTools : false
+    const needsInjection = hasTools ? (!supportsNativeTools || config.needsPromptInjection) : false
 
     const contextLength = getDefaultContextLength(options.model)
 
     const body: Record<string, unknown> = {
       model: options.model,
-      messages: this.convertMessages(messages, options.systemPrompt, !supportsNativeTools && hasTools ? options.tools : undefined),
+      messages: this.convertMessages(messages, options.systemPrompt, needsInjection ? options.tools : undefined),
       stream: false,
       options: {
         num_ctx: contextLength,
@@ -144,6 +181,11 @@ export class OllamaAdapter implements LLMAdapter {
 
     if (supportsNativeTools && options.tools) {
       body.tools = options.tools.map(t => this.convertToolDef(t))
+    }
+
+    // Disable thinking mode for models that eat output with it
+    if (config.thinkingMode === 'disabled') {
+      body.think = false
     }
 
     const res = await fetch(`${this.baseUrl}/api/chat`, {
@@ -160,29 +202,16 @@ export class OllamaAdapter implements LLMAdapter {
 
     const data = await res.json() as OllamaChatResponse
 
-    // Parse response - handle both native tool calls and prompt-based tool calls
-    const content: ContentBlock[] = []
+    // Strip thinking channel markers from content
+    const rawContent = stripThinkingMarkers(data.message.content || '')
 
-    if (data.message.tool_calls && data.message.tool_calls.length > 0) {
-      // Native tool calling response
-      if (data.message.content) {
-        content.push({ type: 'text', text: data.message.content } as TextBlock)
-      }
-      for (const tc of data.message.tool_calls) {
-        content.push({
-          type: 'tool_use',
-          id: `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          name: tc.function.name,
-          input: tc.function.arguments,
-        } as ToolUseBlock)
-      }
-    } else if (hasTools && data.message.content) {
-      // Parse prompt-based tool calls from text (fallback for all models)
-      const parsed = this.parsePromptBasedToolCalls(data.message.content)
-      content.push(...parsed)
-    } else {
-      content.push({ type: 'text', text: data.message.content || '' } as TextBlock)
-    }
+    // Three-stage tool resolution waterfall (runs for ALL models)
+    const content: ContentBlock[] = this.resolveToolCalls(
+      data.message.tool_calls ?? null,
+      rawContent,
+      config,
+      hasTools ?? false,
+    )
 
     const usage: TokenUsage = {
       input_tokens: data.prompt_eval_count ?? 0,
@@ -206,13 +235,16 @@ export class OllamaAdapter implements LLMAdapter {
 
   async *stream(messages: LLMMessage[], options: LLMStreamOptions): AsyncIterable<StreamEvent> {
     const hasTools = options.tools && options.tools.length > 0
-    const supportsNativeTools = hasTools ? await this.supportsTools(options.model) : false
+    const family = await this.getModelFamily(options.model)
+    const config = getFamilyConfig(family)
+    const supportsNativeTools = hasTools ? config.supportsNativeTools : false
+    const needsInjection = hasTools ? (!supportsNativeTools || config.needsPromptInjection) : false
 
     const contextLength = getDefaultContextLength(options.model)
 
     const body: Record<string, unknown> = {
       model: options.model,
-      messages: this.convertMessages(messages, options.systemPrompt, !supportsNativeTools && hasTools ? options.tools : undefined),
+      messages: this.convertMessages(messages, options.systemPrompt, needsInjection ? options.tools : undefined),
       stream: true,
       options: {
         num_ctx: contextLength,
@@ -223,6 +255,11 @@ export class OllamaAdapter implements LLMAdapter {
 
     if (supportsNativeTools && options.tools) {
       body.tools = options.tools.map(t => this.convertToolDef(t))
+    }
+
+    // Disable thinking mode for models that eat output with it
+    if (config.thinkingMode === 'disabled') {
+      body.think = false
     }
 
     const res = await fetch(`${this.baseUrl}/api/chat`, {
@@ -274,8 +311,12 @@ export class OllamaAdapter implements LLMAdapter {
           model = chunk.model
 
           if (chunk.message?.content) {
-            fullText += chunk.message.content
-            yield { type: 'text', data: chunk.message.content }
+            // Strip thinking channel markers from streamed content
+            const cleaned = stripThinkingMarkers(chunk.message.content)
+            if (cleaned) {
+              fullText += cleaned
+              yield { type: 'text', data: cleaned }
+            }
           }
 
           if (chunk.message?.tool_calls) {
@@ -303,10 +344,10 @@ export class OllamaAdapter implements LLMAdapter {
       reader.releaseLock()
     }
 
-    // Fallback: parse prompt-based tool calls from text if no native tool calls were emitted
+    // Fallback: three-stage waterfall for text-based tool calls if no native calls were emitted
     if (hasTools && fullText && !nativeToolCallsEmitted) {
-      const parsed = this.parsePromptBasedToolCalls(fullText)
-      const toolBlocks = parsed.filter(b => b.type === 'tool_use')
+      const resolved = this.resolveToolCalls(null, fullText, config, true)
+      const toolBlocks = resolved.filter(b => b.type === 'tool_use')
       if (toolBlocks.length > 0) {
         for (const block of toolBlocks) {
           yield { type: 'tool_use', data: block }
@@ -430,85 +471,133 @@ Always use tools when you need to interact with the filesystem or run commands.
 After receiving a tool result, continue your analysis.`
   }
 
-  private parsePromptBasedToolCalls(text: string): ContentBlock[] {
-    const content: ContentBlock[] = []
-
-    // Strategy 1: ```tool_call\n{JSON}\n``` format
-    const toolCallRegex = /```tool_call\s*\n([\s\S]*?)\n```/g
-    let lastIndex = 0
-    let match: RegExpExecArray | null
-    let foundToolCalls = false
-
-    while ((match = toolCallRegex.exec(text)) !== null) {
-      foundToolCalls = true
-      if (match.index > lastIndex) {
-        const before = text.slice(lastIndex, match.index).trim()
-        if (before) content.push({ type: 'text', text: before })
+  /**
+   * Three-stage tool resolution waterfall.
+   * Runs for ALL models regardless of native tool support.
+   */
+  private resolveToolCalls(
+    nativeToolCalls: Array<{ function: { name: string; arguments: Record<string, unknown> } }> | null,
+    textContent: string,
+    config: ModelFamilyConfig,
+    hasTools: boolean,
+  ): ContentBlock[] {
+    // Stage 1: Native tool_calls from Ollama response
+    if (nativeToolCalls && nativeToolCalls.length > 0) {
+      const content: ContentBlock[] = []
+      if (textContent) {
+        content.push({ type: 'text', text: textContent } as TextBlock)
       }
-
-      try {
-        const parsed = JSON.parse(match[1])
-        if (parsed.name && parsed.arguments) {
-          content.push({
-            type: 'tool_use',
-            id: `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-            name: parsed.name,
-            input: parsed.arguments,
-          })
-        }
-      } catch {
-        content.push({ type: 'text', text: match[0] })
-      }
-
-      lastIndex = match.index + match[0].length
-    }
-
-    if (foundToolCalls) {
-      if (lastIndex < text.length) {
-        const remainder = text.slice(lastIndex).trim()
-        if (remainder) content.push({ type: 'text', text: remainder })
+      for (const tc of nativeToolCalls) {
+        content.push({
+          type: 'tool_use',
+          id: `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          name: tc.function.name,
+          input: tc.function.arguments,
+        } as ToolUseBlock)
       }
       return content
+    }
+
+    // Stage 2+3: Parse text-based tool calls only if we had tools available
+    if (hasTools && textContent) {
+      const parsed = this.parsePromptBasedToolCalls(textContent, config)
+      if (parsed.length > 0) return parsed
+    }
+
+    // No tool calls — return as pure text
+    if (textContent) {
+      return [{ type: 'text', text: textContent } as TextBlock]
+    }
+    return []
+  }
+
+  private parsePromptBasedToolCalls(text: string, config?: ModelFamilyConfig): ContentBlock[] {
+    const content: ContentBlock[] = []
+    const checkJson = config?.jsonToolFormat !== false  // default true
+    const checkXml = config?.xmlToolFormat !== false    // default true
+
+    // Strategy 1: ```tool_call\n{JSON}\n``` format
+    if (checkJson) {
+      const toolCallRegex = /```tool_call\s*\n([\s\S]*?)\n```/g
+      let lastIndex = 0
+      let match: RegExpExecArray | null
+      let foundToolCalls = false
+
+      while ((match = toolCallRegex.exec(text)) !== null) {
+        foundToolCalls = true
+        if (match.index > lastIndex) {
+          const before = text.slice(lastIndex, match.index).trim()
+          if (before) content.push({ type: 'text', text: before })
+        }
+
+        try {
+          const parsed = JSON.parse(match[1])
+          if (parsed.name && parsed.arguments) {
+            content.push({
+              type: 'tool_use',
+              id: `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+              name: parsed.name,
+              input: parsed.arguments,
+            })
+          }
+        } catch {
+          content.push({ type: 'text', text: match[0] })
+        }
+
+        lastIndex = match.index + match[0].length
+      }
+
+      if (foundToolCalls) {
+        if (lastIndex < text.length) {
+          const remainder = text.slice(lastIndex).trim()
+          if (remainder) content.push({ type: 'text', text: remainder })
+        }
+        return content
+      }
     }
 
     // Strategy 2: XML <function=name><parameter=key>value</parameter></function> format
-    const xmlToolRegex = /<function=(\w+)>([\s\S]*?)<\/function>/g
-    const paramRegex = /<parameter=(\w+)>([\s\S]*?)<\/parameter>/g
-    lastIndex = 0
+    if (checkXml) {
+      const xmlToolRegex = /<function=(\w+)>([\s\S]*?)<\/function>/g
+      const paramRegex = /<parameter=(\w+)>([\s\S]*?)<\/parameter>/g
+      let lastIndex = 0
+      let match: RegExpExecArray | null
+      let foundToolCalls = false
 
-    while ((match = xmlToolRegex.exec(text)) !== null) {
-      foundToolCalls = true
-      if (match.index > lastIndex) {
-        const before = text.slice(lastIndex, match.index).trim()
-        if (before) content.push({ type: 'text', text: before })
+      while ((match = xmlToolRegex.exec(text)) !== null) {
+        foundToolCalls = true
+        if (match.index > lastIndex) {
+          const before = text.slice(lastIndex, match.index).trim()
+          if (before) content.push({ type: 'text', text: before })
+        }
+
+        const toolName = match[1]
+        const paramsBlock = match[2]
+        const input: Record<string, string> = {}
+
+        let paramMatch: RegExpExecArray | null
+        while ((paramMatch = paramRegex.exec(paramsBlock)) !== null) {
+          input[paramMatch[1]] = paramMatch[2].trim()
+        }
+        paramRegex.lastIndex = 0 // Reset for next tool call
+
+        content.push({
+          type: 'tool_use',
+          id: `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          name: toolName,
+          input,
+        })
+
+        lastIndex = match.index + match[0].length
       }
 
-      const toolName = match[1]
-      const paramsBlock = match[2]
-      const input: Record<string, string> = {}
-
-      let paramMatch: RegExpExecArray | null
-      while ((paramMatch = paramRegex.exec(paramsBlock)) !== null) {
-        input[paramMatch[1]] = paramMatch[2].trim()
+      if (foundToolCalls) {
+        if (lastIndex < text.length) {
+          const remainder = text.slice(lastIndex).trim()
+          if (remainder) content.push({ type: 'text', text: remainder })
+        }
+        return content
       }
-      paramRegex.lastIndex = 0 // Reset for next tool call
-
-      content.push({
-        type: 'tool_use',
-        id: `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        name: toolName,
-        input,
-      })
-
-      lastIndex = match.index + match[0].length
-    }
-
-    if (foundToolCalls) {
-      if (lastIndex < text.length) {
-        const remainder = text.slice(lastIndex).trim()
-        if (remainder) content.push({ type: 'text', text: remainder })
-      }
-      return content
     }
 
     // No tool calls found — return as pure text

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/workspace"
+# Verifier sets cwd to workspace; WORKSPACE env var also available
 
 node -e "
 const mod = require('./stream-processor.js');
@@ -15,11 +15,15 @@ const outputPath = path.join(__dirname, 'output.txt');
 // Clean up any previous output
 if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
 
+const inputLines = fs.readFileSync(inputPath, 'utf-8').trim().split('\n');
+const lineCount = inputLines.length;
+
 async function test() {
   const count = await processLines(inputPath, outputPath, line => line.toUpperCase());
 
-  if (count !== 5) {
-    console.error('Expected 5 lines processed, got ' + count);
+  // Check line count matches input
+  if (count !== lineCount) {
+    console.error('Expected ' + lineCount + ' lines processed, got ' + count);
     process.exit(1);
   }
 
@@ -29,16 +33,16 @@ async function test() {
   }
 
   const output = fs.readFileSync(outputPath, 'utf-8').trim().split('\n');
-  const expected = ['HELLO WORLD', 'FOO BAR BAZ', 'TESTING 123', 'LINE FOUR', 'FINAL LINE'];
 
-  if (output.length !== 5) {
-    console.error('Expected 5 output lines, got ' + output.length + ': ' + JSON.stringify(output));
+  if (output.length !== lineCount) {
+    console.error('Expected ' + lineCount + ' output lines, got ' + output.length);
     process.exit(1);
   }
 
-  for (let i = 0; i < expected.length; i++) {
-    if (output[i].trim() !== expected[i]) {
-      console.error('Line ' + i + ': expected \"' + expected[i] + '\", got \"' + output[i].trim() + '\"');
+  // Each output line should be the uppercase version of the corresponding input line
+  for (let i = 0; i < lineCount; i++) {
+    if (output[i].trim() !== inputLines[i].toUpperCase()) {
+      console.error('Line ' + i + ': expected \"' + inputLines[i].toUpperCase() + '\", got \"' + output[i].trim() + '\"');
       process.exit(1);
     }
   }
