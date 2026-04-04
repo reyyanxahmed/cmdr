@@ -8,7 +8,9 @@ import type {
   LLMMessage, ContentBlock, TextBlock, ToolUseBlock, ToolResultBlock,
   ToolCallRecord, TokenUsage, StreamEvent, ToolResult, ToolUseContext,
   LLMAdapter, LLMChatOptions, LLMResponse, ApprovalCallback, LLMToolDef,
+  ModelProfile,
 } from '../core/types.js'
+import { DEFAULT_MODEL_PROFILE } from '../core/types.js'
 import type { ToolRegistry } from '../tools/registry.js'
 import type { ToolExecutor } from '../tools/executor.js'
 import type { PermissionManager } from './permissions.js'
@@ -16,6 +18,9 @@ import { classifyIntent, filterToolsByIntent, detectFrustration, FRUSTRATION_NUD
 import { ContentReplacer } from './content-replacement.js'
 import { globalEventBus } from './event-bus.js'
 import type { GraphContextProvider } from './graph-context.js'
+import { attemptRepair, type RepairContext } from '../llm/repair/tool-repair.js'
+import { shouldRetry, buildCorrectionMessages, type RetryPolicy } from '../llm/repair/retry-policy.js'
+import { detectToolCallLeakage } from '../llm/validation/tool-call-schema.js'
 
 // ---------------------------------------------------------------------------
 // Safe parallel tools — read-only tools that can safely run concurrently
@@ -275,11 +280,77 @@ export class AgentRunner {
 
         // Step 3: No tools? We're done.
         if (pendingToolUse.length === 0) {
+          // Check for leakage in text output — model may have tried to call
+          // tools but used wrong format (text instead of API)
+          if (turnText && detectToolCallLeakage(turnText)) {
+            const profile = await this.getProfile()
+            const retryPolicy = this.buildRetryPolicy(profile)
+            const decision = shouldRetry(0, retryPolicy, 'leakage')
+            if (decision.shouldRetry) {
+              // Inject correction messages and let the loop retry
+              const corrections = buildCorrectionMessages({
+                errors: [],
+                availableTools: fullToolDefs.map(t => t.name),
+                attempt: 0,
+                isLeakage: true,
+              }, retryPolicy)
+              for (const msg of corrections) {
+                conversationMessages.push(msg)
+              }
+              globalEventBus.emit('tool:leakage', { text: turnText.slice(0, 200) })
+              // Don't break — loop will continue with corrected context
+              continue
+            }
+          }
           finalOutput = turnText
           // Emit turn:end for the final turn
           globalEventBus.emit('turn:end', { turn: turns, tokenUsage: turnUsage, toolCallCount: 0 })
           break
         }
+
+        // Step 3.5: Handle leakage sentinel from adapter
+        // When the adapter detects tool format in text but can't parse it,
+        // it emits a __tool_call_leakage__ sentinel tool call.
+        const leakageIdx = pendingToolUse.findIndex(t => t.name === '__tool_call_leakage__')
+        if (leakageIdx >= 0) {
+          pendingToolUse.splice(leakageIdx, 1)
+          if (pendingToolUse.length === 0) {
+            // Only had leakage, no real tools — inject correction and retry
+            const profile = await this.getProfile()
+            const retryPolicy = this.buildRetryPolicy(profile)
+            const decision = shouldRetry(0, retryPolicy, 'leakage')
+            if (decision.shouldRetry) {
+              // Remove the assistant message we just pushed (it had the leakage sentinel)
+              conversationMessages.pop()
+              const corrections = buildCorrectionMessages({
+                errors: [],
+                availableTools: fullToolDefs.map(t => t.name),
+                attempt: 0,
+                isLeakage: true,
+              }, retryPolicy)
+              for (const msg of corrections) {
+                conversationMessages.push(msg)
+              }
+              globalEventBus.emit('tool:leakage', { text: turnText.slice(0, 200) })
+              continue
+            }
+            // No retry — treat as no tools
+            finalOutput = turnText
+            globalEventBus.emit('turn:end', { turn: turns, tokenUsage: turnUsage, toolCallCount: 0 })
+            break
+          }
+        }
+
+        // Step 3.6: Pre-validate tool calls and attempt repair on failures
+        const validatedToolUse = await this.validateAndRepairToolCalls(
+          pendingToolUse, turnText, fullToolDefs, conversationMessages, turns,
+        )
+        // Replace pendingToolUse with validated (possibly repaired) calls
+        // Validation may have removed some calls; if all were removed, continue loop
+        if (validatedToolUse === 'retry') {
+          continue // Correction messages were injected, loop will retry
+        }
+        const toolsToExecute = validatedToolUse === 'proceed' ? pendingToolUse : validatedToolUse
 
         // Step 4: Execute tool calls — parallelize safe read-only tools,
         // execute write/dangerous tools sequentially.
@@ -294,7 +365,7 @@ export class AgentRunner {
           metadata: this.options.metadata,
         }
 
-        const allSafe = pendingToolUse.every(tc => SAFE_PARALLEL_TOOLS.has(tc.name))
+        const allSafe = toolsToExecute.every(tc => SAFE_PARALLEL_TOOLS.has(tc.name))
 
         const executeOne = async (block: ToolUseBlock) => {
           callbacks.onToolCall?.(block.name, block.input)
@@ -378,11 +449,11 @@ export class AgentRunner {
 
         if (allSafe) {
           // All tools are read-only — execute in parallel
-          executions = await Promise.all(pendingToolUse.map(executeOne))
+          executions = await Promise.all(toolsToExecute.map(executeOne))
         } else {
           // Mixed or write tools — execute sequentially for safety
           executions = []
-          for (const block of pendingToolUse) {
+          for (const block of toolsToExecute) {
             executions.push(await executeOne(block))
           }
         }
@@ -397,7 +468,7 @@ export class AgentRunner {
 
         // --- Graph auto-update: debounced incremental update after write tools ---
         if (this.options.graphContext?.isAvailable()) {
-          const needsUpdate = pendingToolUse.some(tc => GRAPH_UPDATE_TRIGGERS.has(tc.name))
+          const needsUpdate = toolsToExecute.some(tc => GRAPH_UPDATE_TRIGGERS.has(tc.name))
           if (needsUpdate) {
             if (this.graphUpdateTimer) clearTimeout(this.graphUpdateTimer)
             this.graphUpdateTimer = setTimeout(() => {
@@ -416,7 +487,7 @@ export class AgentRunner {
         callbacks.onMessage?.(toolResultMessage)
 
         // Emit turn:end event
-        globalEventBus.emit('turn:end', { turn: turns, tokenUsage: turnUsage, toolCallCount: pendingToolUse.length })
+        globalEventBus.emit('turn:end', { turn: turns, tokenUsage: turnUsage, toolCallCount: toolsToExecute.length })
 
         // Loop back — send updated conversation to LLM
       }
@@ -451,5 +522,137 @@ export class AgentRunner {
     }
 
     yield { type: 'done', data: runResult }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Repair + retry helpers
+  // ---------------------------------------------------------------------------
+
+  private retryAttempts = 0
+
+  private async getProfile(): Promise<ModelProfile> {
+    if (this.adapter.getModelProfile) {
+      return await this.adapter.getModelProfile(this.options.model)
+    }
+    return DEFAULT_MODEL_PROFILE
+  }
+
+  private buildRetryPolicy(profile: ModelProfile): RetryPolicy {
+    return {
+      maxRetries: profile.maxToolRetries,
+      attemptRepair: profile.attemptRepair,
+      correctionStyle: profile.correctionStyle,
+    }
+  }
+
+  /**
+   * Validate pending tool calls and attempt repair on failures.
+   *
+   * Returns:
+   * - 'proceed': all calls are valid, use pendingToolUse as-is
+   * - 'retry': correction messages injected, caller should `continue` the loop
+   * - ToolUseBlock[]: repaired set of tool calls to execute
+   */
+  private async validateAndRepairToolCalls(
+    pendingToolUse: ToolUseBlock[],
+    turnText: string,
+    fullToolDefs: LLMToolDef[],
+    conversationMessages: LLMMessage[],
+    turn: number,
+  ): Promise<'proceed' | 'retry' | ToolUseBlock[]> {
+    const availableToolNames = new Set(fullToolDefs.map(t => t.name))
+    const unknownTools = pendingToolUse.filter(t => !availableToolNames.has(t.name))
+
+    // If all tools are known, proceed without validation overhead
+    if (unknownTools.length === 0) return 'proceed'
+
+    // We have unknown tools — attempt repair
+    const profile = await this.getProfile()
+    const retryPolicy = this.buildRetryPolicy(profile)
+
+    if (!retryPolicy.attemptRepair) {
+      // No repair configured — proceed as normal (executor will handle unknown tool errors)
+      return 'proceed'
+    }
+
+    // Build repair context from registered tool schemas
+    const toolSchemas = new Map<string, import('zod').ZodSchema>()
+    for (const def of fullToolDefs) {
+      const tool = this.toolRegistry.get(def.name)
+      if (tool) toolSchemas.set(def.name, tool.inputSchema)
+    }
+
+    const repairContext: RepairContext = {
+      availableTools: fullToolDefs.map(t => t.name),
+      toolSchemas,
+    }
+
+    // Attempt repair on unknown tools
+    const rejected = unknownTools.map(t => ({
+      name: t.name,
+      arguments: t.input,
+      error: `Unknown tool: "${t.name}"`,
+    }))
+
+    const repairResult = attemptRepair(turnText, rejected, repairContext)
+
+    if (repairResult && repairResult.repaired.length > 0) {
+      // Repair succeeded — build repaired tool blocks
+      globalEventBus.emit('tool:repaired', {
+        fixes: repairResult.fixes,
+        count: repairResult.repaired.length,
+      })
+
+      const repairedBlocks: ToolUseBlock[] = []
+
+      // Keep valid original tool calls
+      for (const block of pendingToolUse) {
+        if (availableToolNames.has(block.name)) {
+          repairedBlocks.push(block)
+        }
+      }
+
+      // Add repaired tool calls
+      for (const repaired of repairResult.repaired) {
+        repairedBlocks.push({
+          type: 'tool_use',
+          id: `repaired_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          name: repaired.name,
+          input: repaired.arguments,
+        })
+      }
+
+      return repairedBlocks
+    }
+
+    // Repair failed — try retry if policy allows
+    const decision = shouldRetry(this.retryAttempts, retryPolicy, 'unknown_tool')
+    if (decision.shouldRetry) {
+      this.retryAttempts++
+      // Remove the assistant message we just pushed (it had bad tool calls)
+      conversationMessages.pop()
+
+      const corrections = buildCorrectionMessages({
+        errors: rejected,
+        availableTools: [...availableToolNames],
+        attempt: this.retryAttempts - 1,
+        isLeakage: false,
+      }, retryPolicy)
+
+      for (const msg of corrections) {
+        conversationMessages.push(msg)
+      }
+
+      globalEventBus.emit('tool:retry', {
+        attempt: this.retryAttempts,
+        reason: decision.reason,
+        errors: rejected.map(r => r.error),
+      })
+
+      return 'retry'
+    }
+
+    // No more retries — proceed with whatever we have (executor will handle errors)
+    return 'proceed'
   }
 }

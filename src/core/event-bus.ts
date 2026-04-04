@@ -30,6 +30,9 @@ export interface CmdrEvents {
   'tool:after': { name: string; result: ToolResult; durationMs: number }
   'tool:error': { name: string; error: string }
   'tool:denied': { name: string; reason: string }
+  'tool:leakage': { text: string }
+  'tool:repaired': { fixes: string[]; count: number }
+  'tool:retry': { attempt: number; reason: string; errors: string[] }
 
   // LLM lifecycle
   'llm:request': { model: string; messageCount: number }

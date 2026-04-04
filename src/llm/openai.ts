@@ -10,6 +10,7 @@ import type {
   LLMResponse, StreamEvent, ContentBlock, TextBlock,
   ToolUseBlock, ToolResultBlock, LLMToolDef, TokenUsage,
 } from '../core/types.js'
+import { validateToolCallShape } from './validation/tool-call-schema.js'
 
 interface OpenAIChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -358,14 +359,18 @@ export class OpenAIAdapter implements LLMAdapter {
         let args: Record<string, unknown> = {}
         try {
           args = JSON.parse(tc.function.arguments)
-        } catch { /* */ }
+        } catch { /* malformed args */ }
 
-        content.push({
-          type: 'tool_use',
-          id: tc.id,
-          name: tc.function.name,
-          input: args,
-        } as ToolUseBlock)
+        // Validate through canonical schema
+        const validation = validateToolCallShape({ name: tc.function.name, arguments: args })
+        if (validation.ok) {
+          content.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: validation.toolCall.name,
+            input: validation.toolCall.arguments,
+          } as ToolUseBlock)
+        }
       }
     }
 
@@ -380,6 +385,16 @@ export class OpenAIAdapter implements LLMAdapter {
         description: tool.description,
         parameters: tool.inputSchema,
       },
+    }
+  }
+
+  getModelProfile(): import('../core/types.js').ModelProfile {
+    return {
+      retryOnFailure: false,
+      maxToolRetries: 0,
+      attemptRepair: false,
+      correctionStyle: 'gentle',
+      strictToolPrompt: false,
     }
   }
 }

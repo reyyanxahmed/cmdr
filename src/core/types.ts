@@ -362,10 +362,35 @@ export interface LLMChatOptions {
 
 export interface LLMStreamOptions extends LLMChatOptions {}
 
+/** Model-specific behavior profile for retry/repair decisions. */
+export interface ModelProfile {
+  /** Whether to enable retry loop for failed tool calls. */
+  readonly retryOnFailure: boolean
+  /** Maximum number of tool call retries. */
+  readonly maxToolRetries: number
+  /** Whether to attempt structural repair before retrying. */
+  readonly attemptRepair: boolean
+  /** Aggressiveness of correction prompts. */
+  readonly correctionStyle: 'gentle' | 'strict'
+  /** Use strict tool discipline in prompt. */
+  readonly strictToolPrompt: boolean
+}
+
+/** Default profile for reliable models (OpenAI, Anthropic). */
+export const DEFAULT_MODEL_PROFILE: ModelProfile = {
+  retryOnFailure: false,
+  maxToolRetries: 0,
+  attemptRepair: false,
+  correctionStyle: 'gentle',
+  strictToolPrompt: false,
+}
+
 export interface LLMAdapter {
   readonly name: string
   chat(messages: LLMMessage[], options: LLMChatOptions): Promise<LLMResponse>
   stream(messages: LLMMessage[], options: LLMStreamOptions): AsyncIterable<StreamEvent>
+  /** Get model-specific behavior profile for retry/repair decisions. */
+  getModelProfile?(model: string): Promise<ModelProfile> | ModelProfile
 }
 
 // ---------------------------------------------------------------------------

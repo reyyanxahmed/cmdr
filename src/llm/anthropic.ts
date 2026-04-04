@@ -11,6 +11,7 @@ import type {
   LLMResponse, StreamEvent, ContentBlock, TextBlock,
   ToolUseBlock, ToolResultBlock, LLMToolDef, TokenUsage,
 } from '../core/types.js'
+import { validateToolCallShape } from './validation/tool-call-schema.js'
 
 // Anthropic API types
 interface AnthropicMessage {
@@ -323,7 +324,16 @@ export class AnthropicAdapter implements LLMAdapter {
         return { type: 'text', text: b.text } as TextBlock
       }
       if (b.type === 'tool_use') {
-        return { type: 'tool_use', id: b.id, name: b.name, input: b.input } as ToolUseBlock
+        // Validate through canonical schema
+        const validation = validateToolCallShape({ name: b.name, arguments: b.input })
+        if (validation.ok) {
+          return {
+            type: 'tool_use',
+            id: b.id,
+            name: validation.toolCall.name,
+            input: validation.toolCall.arguments,
+          } as ToolUseBlock
+        }
       }
       return { type: 'text', text: '' } as TextBlock  // fallback
     })
@@ -334,6 +344,16 @@ export class AnthropicAdapter implements LLMAdapter {
       name: tool.name,
       description: tool.description,
       input_schema: tool.inputSchema,
+    }
+  }
+
+  getModelProfile(): import('../core/types.js').ModelProfile {
+    return {
+      retryOnFailure: false,
+      maxToolRetries: 0,
+      attemptRepair: false,
+      correctionStyle: 'gentle',
+      strictToolPrompt: false,
     }
   }
 }
