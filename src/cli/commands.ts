@@ -594,3 +594,25 @@ registerCommand({
     return '__QUIT__'
   },
 })
+
+registerCommand({
+  name: 'think',
+  description: 'Toggle thinking mode (on/off/auto)',
+  execute: async (args, context) => {
+    const mode = args.trim().toLowerCase()
+    if (mode === 'on' || mode === 'off' || mode === 'auto') {
+      context.setThinkingMode(mode)
+      return renderInfo(`Thinking mode: ${mode === 'on' ? GREEN('on') : mode === 'off' ? RED('off') : YELLOW('auto')}`)
+    }
+    return renderInfo('Usage: /think on | off | auto')
+  },
+})
+
+registerCommand({
+  name: 'fast',
+  description: 'Toggle fast mode (thinking off + low temperature)',
+  execute: async (_args, context) => {
+    context.setThinkingMode('off')
+    return renderInfo(`Fast mode ${GREEN('enabled')} — thinking disabled, lower temperature`)
+  },
+})

@@ -1,6 +1,6 @@
 {
   "name": "cmdr-agent",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Open-source multi-agent coding tool for your terminal. Powered by Ollama.",
   "type": "module",
   "bin": {
@@ -10,7 +10,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "postbuild": "chmod +x dist/bin/cmdr.js",
+    "postbuild": "cp package.json dist/package.json && chmod +x dist/bin/cmdr.js",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",

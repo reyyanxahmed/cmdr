@@ -5,6 +5,7 @@
 export interface CliArgs {
   model?: string
   ollamaUrl?: string
+  provider?: string
   help?: boolean
   version?: boolean
   prompt?: string
@@ -16,6 +17,9 @@ export interface CliArgs {
   team?: string
   maxTurns?: number
   outputFormat?: 'text' | 'json' | 'stream-json'
+  think?: boolean
+  noThink?: boolean
+  fast?: boolean
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -33,6 +37,9 @@ export function parseArgs(argv: string[]): CliArgs {
       case '--ollama-url':
       case '-u':
         args.ollamaUrl = argv[++i]
+        break
+      case '--provider':
+        args.provider = argv[++i]
         break
       case '--help':
       case '-h':
@@ -73,6 +80,15 @@ export function parseArgs(argv: string[]): CliArgs {
       case '--output-format':
         args.outputFormat = argv[++i] as 'text' | 'json' | 'stream-json'
         break
+      case '--think':
+        args.think = true
+        break
+      case '--no-think':
+        args.noThink = true
+        break
+      case '--fast':
+        args.fast = true
+        break
       default:
         // If no flag prefix, treat as inline prompt
         if (!arg.startsWith('-') && !args.prompt) {
@@ -106,6 +122,9 @@ export function printHelp(): void {
     --verbose                Print full tool output (default: collapsed)
     --max-turns <n>          Maximum agent turns before stopping
     --output-format <fmt>    Output format: text (default), json, stream-json
+    --think                  Force thinking mode (extended reasoning)
+    --no-think               Disable thinking (faster responses for trivial prompts)
+    --fast                   Fast mode: disable thinking + lower temperature
     -h, --help               Show this help
     -v, --version            Show version
     --dangerously-skip-permissions  Auto-approve all tool calls (yolo mode)

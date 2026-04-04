@@ -10,9 +10,10 @@
 
 import React from 'react'
 import { render } from 'ink'
-import type { LLMAdapter, ToolUseBlock, ToolResultBlock, ApprovalDecision, ToolRiskLevel } from '../core/types.js'
+import type { LLMAdapter, ToolUseBlock, ToolResultBlock, ApprovalDecision, ToolRiskLevel, AgentConfig } from '../core/types.js'
 import { Agent } from '../core/agent.js'
 import { OllamaAdapter } from '../llm/ollama.js'
+import { createAdapter, detectProviderFromModel, type ProviderName } from '../llm/provider-factory.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { registerBuiltInTools } from '../tools/built-in/index.js'
 import { SOLO_CODER, getTeamPreset } from '../core/presets.js'
@@ -38,6 +39,7 @@ import { AgentRegistry, AgentExecutor, createSubagentTool } from '../agents/inde
 import { CommandLoader } from '../commands/index.js'
 import { CostTracker } from '../session/cost-tracker.js'
 import { UndoManager } from '../session/undo-manager.js'
+import { MemoryManager } from '../memory/memory-manager.js'
 import { execSync } from 'node:child_process'
 import { startThinking, stopSpinner, spinnerSuccess, spinnerFail, getCompletionSummary, startToolExec } from './spinner.js'
 import type { RunCallbacks } from '../core/agent-runner.js'
@@ -46,6 +48,7 @@ import App from './ink/App.js'
 export interface ReplOptions {
   model: string
   ollamaUrl: string
+  provider?: string
   version?: string
   initialPrompt?: string
   dangerouslySkipPermissions?: boolean
@@ -55,32 +58,52 @@ export interface ReplOptions {
   team?: string
   maxTurns?: number
   outputFormat?: 'text' | 'json' | 'stream-json'
+  think?: boolean
+  noThink?: boolean
+  fast?: boolean
 }
 
 export async function startRepl(options: ReplOptions): Promise<void> {
   const cwd = process.cwd()
   const verbose = options.verbose ?? false
 
+  // Load config first — needed for provider resolution
+  const config = await loadConfig(cwd)
+
   // --- Setup ---
-  const adapter = new OllamaAdapter(options.ollamaUrl)
+  // Determine provider: CLI flag > model auto-detect > config > default (ollama)
+  const resolvedProvider: ProviderName =
+    (options.provider as ProviderName | undefined)
+    ?? detectProviderFromModel(options.model)
+    ?? (config?.defaultProvider as ProviderName | undefined)
+    ?? 'ollama'
 
-  // Check Ollama connectivity
-  const healthy = await adapter.healthCheck()
-  if (!healthy) {
-    console.error(renderError(
-      `Cannot connect to Ollama at ${options.ollamaUrl}\n` +
-      `  Make sure Ollama is running: ollama serve\n` +
-      `  Then pull a model: ollama pull ${options.model}`,
-    ))
-    process.exit(1)
+  const adapter = createAdapter({
+    provider: resolvedProvider,
+    ollamaUrl: options.ollamaUrl,
+  })
+
+  // Ollama-specific setup: health check, model discovery, model watcher
+  let modelWatcher: ModelWatcher | undefined
+  if (resolvedProvider === 'ollama') {
+    const ollamaAdapter = adapter as OllamaAdapter
+    const healthy = await ollamaAdapter.healthCheck()
+    if (!healthy) {
+      console.error(renderError(
+        `Cannot connect to Ollama at ${options.ollamaUrl}\n` +
+        `  Make sure Ollama is running: ollama serve\n` +
+        `  Then pull a model: ollama pull ${options.model}`,
+      ))
+      process.exit(1)
+    }
+
+    // Auto-discover all installed Ollama models into the registry
+    await discoverOllamaModels(options.ollamaUrl)
+
+    // Start background model watcher — detects newly pulled models
+    modelWatcher = new ModelWatcher(options.ollamaUrl, 30_000)
+    modelWatcher.start()
   }
-
-  // Auto-discover all installed Ollama models into the registry
-  await discoverOllamaModels(options.ollamaUrl)
-
-  // Start background model watcher — detects newly pulled models
-  const modelWatcher = new ModelWatcher(options.ollamaUrl, 30_000)
-  modelWatcher.start()
 
   // Discover project
   const projectContext = await discoverProject(cwd)
@@ -92,19 +115,21 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   const modelContextLength = await resolveContextLength(options.model, options.ollamaUrl)
   const session = new SessionManager(projectContext, modelContextLength)
 
-  // Build system prompt with project context
+  // Load persistent memory
+  const memoryManager = new MemoryManager(cwd)
+  const memoryPrompt = await memoryManager.getMemoryPrompt()
+
+  // Build system prompt with project context + memory
   const systemPrompt = buildSystemPrompt({
     basePrompt: SOLO_CODER.systemPrompt!,
     projectContext,
     model: options.model,
+    memoryPrompt: memoryPrompt || undefined,
   })
 
   // Tool registry
   const toolRegistry = new ToolRegistry()
   registerBuiltInTools(toolRegistry)
-
-  // Load config
-  const config = await loadConfig(cwd)
 
   // Plugin manager
   const pluginManager = new PluginManager()
@@ -167,6 +192,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     options.dangerouslySkipPermissions ? 'yolo' : 'normal',
   )
   await permissionManager.loadSettings()
+  permissionManager.setProjectRoot(cwd)
   if (options.dangerouslySkipPermissions) {
     permissionManager.setMode('yolo')
   }
@@ -187,18 +213,30 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   // Create agent
   const currentModel = options.model
-  const agentConfig = { ...SOLO_CODER, model: currentModel, systemPrompt }
+  const agentConfig = { ...SOLO_CODER, model: currentModel, systemPrompt } as AgentConfig & { maxTurns?: number; thinkingEnabled?: boolean; temperature?: number }
   if (options.maxTurns) {
     agentConfig.maxTurns = options.maxTurns
   } else if (config.maxTurns) {
     agentConfig.maxTurns = config.maxTurns
   }
+
+  // Thinking mode: --fast implies --no-think + lower temperature
+  if (options.fast) {
+    agentConfig.thinkingEnabled = false
+    agentConfig.temperature = 0.2
+  } else if (options.noThink) {
+    agentConfig.thinkingEnabled = false
+  } else if (options.think) {
+    agentConfig.thinkingEnabled = true
+  }
+
   const agent = new Agent(
     agentConfig,
     adapter,
     toolRegistry,
     cwd,
     permissionManager,
+    { memoryManager },
   )
 
   // --- Welcome banner (prints to normal terminal before Ink takes over) ---
@@ -303,7 +341,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   await app.waitUntilExit()
 
   // Cleanup background watcher
-  modelWatcher.stop()
+  modelWatcher?.stop()
 }
 
 // ---------------------------------------------------------------------------

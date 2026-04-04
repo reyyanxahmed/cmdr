@@ -16,18 +16,19 @@ import { gitCommitTool, gitBranchTool } from './git-commit.js'
 import { thinkTool } from './think.js'
 import { webFetchTool } from './web-fetch.js'
 import { askUserTool } from './ask-user.js'
+import { memoryReadTool, memoryWriteTool } from './memory.js'
 
 export {
   bashTool, fileReadTool, fileWriteTool, fileEditTool,
   grepTool, globTool, gitDiffTool, gitLogTool, gitCommitTool, gitBranchTool,
-  thinkTool, webFetchTool, askUserTool,
+  thinkTool, webFetchTool, askUserTool, memoryReadTool, memoryWriteTool,
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const BUILT_IN_TOOLS: ToolDefinition<any>[] = [
   bashTool, fileReadTool, fileWriteTool, fileEditTool,
   grepTool, globTool, gitDiffTool, gitLogTool, gitCommitTool, gitBranchTool,
-  thinkTool, webFetchTool, askUserTool,
+  thinkTool, webFetchTool, askUserTool, memoryReadTool, memoryWriteTool,
 ]
 
 export function registerBuiltInTools(registry: ToolRegistry): void {
