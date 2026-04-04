@@ -387,8 +387,11 @@ registerCommand({
 
 registerCommand({
   name: 'agents',
-  description: 'Show active agents and their status',
-  execute: async () => {
+  description: 'List registered subagents: /agents, /agents info <name>',
+  execute: async (args) => {
+    if (args.startsWith('info ')) {
+      return `__AGENT_INFO__:${args.slice(5).trim()}`
+    }
     return '__AGENTS_STATUS__'
   },
 })
