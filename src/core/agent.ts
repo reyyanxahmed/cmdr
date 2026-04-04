@@ -12,6 +12,7 @@ import { AgentRunner, type RunCallbacks, type RunResult } from './agent-runner.j
 import { ToolRegistry } from '../tools/registry.js'
 import { ToolExecutor } from '../tools/executor.js'
 import type { PermissionManager } from './permissions.js'
+import type { GraphContextProvider } from './graph-context.js'
 
 const ZERO_USAGE: TokenUsage = { input_tokens: 0, output_tokens: 0 }
 
@@ -24,6 +25,7 @@ export class Agent {
   private readonly metadata?: Readonly<Record<string, unknown>>
   private state: AgentState
   private cwd: string
+  private graphContext?: GraphContextProvider
 
   constructor(
     config: AgentConfig,
@@ -148,6 +150,11 @@ export class Agent {
     this.cwd = cwd
   }
 
+  /** Set the graph context provider for code-review-graph integration. */
+  setGraphContext(graphContext: GraphContextProvider): void {
+    this.graphContext = graphContext
+  }
+
   /** Update the model used for subsequent LLM calls. */
   setModel(model: string): void {
     (this.config as { model?: string }).model = model
@@ -167,6 +174,7 @@ export class Agent {
       abortSignal,
       thinkingEnabled: this.config.thinkingEnabled,
       metadata: this.metadata,
+      graphContext: this.graphContext,
     }, this.permissionManager)
   }
 

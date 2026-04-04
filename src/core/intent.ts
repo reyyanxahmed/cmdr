@@ -27,6 +27,9 @@ const EXPLORATORY_TOOLS = new Set([
   'git_diff',
   'git_log',
   'think',
+  'graph_impact',
+  'graph_query',
+  'graph_review',
 ])
 
 // ---------------------------------------------------------------------------

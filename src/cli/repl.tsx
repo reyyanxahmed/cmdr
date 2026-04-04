@@ -50,6 +50,9 @@ import { setTaskScheduler } from '../tools/built-in/task-tools.js'
 import { setCronScheduler } from '../tools/built-in/cron-tools.js'
 import { setMcpClient } from '../tools/built-in/mcp-resource-tools.js'
 import { HookManager } from '../core/hooks.js'
+import { detectCodeReviewGraph, graphDatabaseExists, buildCrgMcpConfig } from '../config/mcp-config.js'
+import { GraphContextProvider } from '../core/graph-context.js'
+import { setGraphToolsClient } from '../tools/built-in/graph-tools.js'
 
 export interface ReplOptions {
   model: string
@@ -162,6 +165,38 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   mcpClient.registerTools(toolRegistry)
   setMcpClient(mcpClient)
 
+  // Code-review-graph (MCP auto-detect)
+  let graphContext: GraphContextProvider | undefined
+  const crgDetection = detectCodeReviewGraph()
+  if (crgDetection.available) {
+    try {
+      const crgConfig = buildCrgMcpConfig(crgDetection, cwd)
+      await mcpClient.connect(crgConfig)
+      graphContext = new GraphContextProvider(cwd)
+      graphContext.setMcpClient(mcpClient)
+      setGraphToolsClient(mcpClient, cwd)
+      projectContext.graphAvailable = true
+
+      // Auto-build graph on first session if no DB exists
+      if (!graphDatabaseExists(cwd)) {
+        console.log(`  ${DIM('Building code graph (first run, async)...')}`)
+        graphContext.buildGraph().then(() => {
+          graphContext!.setBuildReady(true)
+        }).catch(() => {
+          console.log(`  ${DIM('⚠ Graph build failed — graph tools will use fallback')}`)
+        })
+      } else {
+        graphContext.setBuildReady(true)
+      }
+
+      console.log(`  ${DIM('Graph:')} code-review-graph connected`)
+      registerMcpCleanup(mcpClient)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.log(`  ${DIM('⚠ Code graph unavailable:')} ${msg}`)
+    }
+  }
+
   // Load subagent registry
   const agentRegistry = new AgentRegistry()
   await agentRegistry.loadAll(cwd)
@@ -262,6 +297,11 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     permissionManager,
     { memoryManager },
   )
+
+  // Wire graph context into agent if available
+  if (graphContext) {
+    agent.setGraphContext(graphContext)
+  }
 
   // Start background task scheduler
   taskScheduler.start()
@@ -373,6 +413,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   // Cleanup
   taskScheduler.stop()
+  mcpClient.disconnect('crg')
   globalEventBus.emit('session:end', {
     sessionId: session.id ?? 'default',
     messageCount: agent.getHistory().length,
@@ -380,6 +421,21 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   })
   globalEventBus.removeAll()
   modelWatcher?.stop()
+
+  // Ensure MCP child processes are killed on unexpected exit
+  const cleanupMcp = () => { mcpClient.disconnect('crg') }
+  process.removeListener('exit', cleanupMcp)
+}
+
+// Register global exit handler once (outside startRepl to avoid stacking)
+let _cleanupRegistered = false
+function registerMcpCleanup(mcpClient: McpClient): void {
+  if (_cleanupRegistered) return
+  _cleanupRegistered = true
+  const cleanup = () => { try { mcpClient.disconnect('crg') } catch {} }
+  process.on('exit', cleanup)
+  process.on('SIGINT', cleanup)
+  process.on('SIGTERM', cleanup)
 }
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import type { PermissionManager } from './permissions.js'
 import { classifyIntent, filterToolsByIntent, detectFrustration, FRUSTRATION_NUDGE } from './intent.js'
 import { ContentReplacer } from './content-replacement.js'
 import { globalEventBus } from './event-bus.js'
+import type { GraphContextProvider } from './graph-context.js'
 
 // ---------------------------------------------------------------------------
 // Safe parallel tools — read-only tools that can safely run concurrently
@@ -29,6 +30,14 @@ const SAFE_PARALLEL_TOOLS = new Set([
   'git_log',
   'think',
   'memory_read',
+  'graph_impact',
+  'graph_query',
+  'graph_review',
+])
+
+// Tools that trigger graph incremental update after execution
+const GRAPH_UPDATE_TRIGGERS = new Set([
+  'file_write', 'file_edit', 'git_commit',
 ])
 
 // ---------------------------------------------------------------------------
@@ -50,6 +59,8 @@ export interface RunnerOptions {
   readonly thinkingEnabled?: boolean
   /** Metadata passed to tool execute context (e.g. memoryManager). */
   readonly metadata?: Readonly<Record<string, unknown>>
+  /** Graph context provider for code-review-graph integration. */
+  readonly graphContext?: GraphContextProvider
 }
 
 export interface RunCallbacks {
@@ -100,6 +111,7 @@ const ZERO_USAGE: TokenUsage = { input_tokens: 0, output_tokens: 0 }
 export class AgentRunner {
   private readonly maxTurns: number
   private readonly contentReplacer: ContentReplacer
+  private graphUpdateTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
     private readonly adapter: LLMAdapter,
@@ -170,6 +182,18 @@ export class AgentRunner {
         content: [{ type: 'text', text: FRUSTRATION_NUDGE }],
         isMeta: true,
       })
+    }
+
+    // --- Graph context injection (heuristic-gated, token-budgeted) ---
+    if (this.options.graphContext) {
+      try {
+        const graphMsg = await this.options.graphContext.getContext(intent, lastUserText)
+        if (graphMsg) {
+          conversationMessages.push(graphMsg)
+        }
+      } catch {
+        // Graph context is optional — never block the turn
+      }
     }
 
     try {
@@ -371,6 +395,18 @@ export class AgentRunner {
           yield { type: 'tool_result', data: resultBlock }
         }
 
+        // --- Graph auto-update: debounced incremental update after write tools ---
+        if (this.options.graphContext?.isAvailable()) {
+          const needsUpdate = pendingToolUse.some(tc => GRAPH_UPDATE_TRIGGERS.has(tc.name))
+          if (needsUpdate) {
+            if (this.graphUpdateTimer) clearTimeout(this.graphUpdateTimer)
+            this.graphUpdateTimer = setTimeout(() => {
+              this.options.graphContext?.triggerIncrementalUpdate().catch(() => {})
+              this.graphUpdateTimer = null
+            }, 300)
+          }
+        }
+
         const toolResultMessage: LLMMessage = {
           role: 'user',
           content: toolResultBlocks,
@@ -400,8 +436,14 @@ export class AgentRunner {
       }
     }
 
+    // Filter out transient meta-messages (graph context, frustration nudge)
+    // so they don't leak into persistent session history.
+    const newMessages = conversationMessages
+      .slice(initialMessages.length)
+      .filter(m => !m.isMeta)
+
     const runResult: RunResult = {
-      messages: conversationMessages.slice(initialMessages.length),
+      messages: newMessages,
       output: finalOutput,
       toolCalls: allToolCalls,
       tokenUsage: totalUsage,

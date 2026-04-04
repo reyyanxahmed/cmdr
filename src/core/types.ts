@@ -210,6 +210,8 @@ export interface ProjectContext {
   cmdrInstructions?: string
   /** Skills active for this session. */
   activeSkills?: readonly { name: string; instructions: string; scripts: string[] }[]
+  /** Whether code-review-graph is available and initialized. */
+  graphAvailable?: boolean
 }
 
 // ---------------------------------------------------------------------------
