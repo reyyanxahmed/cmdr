@@ -6,6 +6,10 @@ dist/
 .env.*
 *.tsbuildinfo
 
+# Eval run artifacts (regenerable)
+eval/runs/
+eval/datasets/humaneval.jsonl
+
 # Reference repos (not part of cmdr)
 claude-code-main/
 claw-code-main/
