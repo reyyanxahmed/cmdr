@@ -3,7 +3,7 @@
  */
 
 import { readdir, stat } from 'fs/promises'
-import { join, relative } from 'path'
+import { join, relative, resolve } from 'path'
 import { z } from 'zod'
 import { defineTool } from '../registry.js'
 
@@ -15,11 +15,12 @@ export const globTool = defineTool({
 
   inputSchema: z.object({
     pattern: z.string().describe('Glob pattern (e.g. "**/*.ts", "src/**/*.js").'),
-    path: z.string().optional().describe('Root directory to search from. Defaults to cwd.'),
+    path: z.string().optional().describe('Root directory to search from. Defaults to project root.'),
   }),
 
   execute: async (input, context) => {
-    const root = input.path ?? context.cwd ?? process.cwd()
+    // Always resolve to an absolute path, preferring context.cwd (project root) over process.cwd()
+    const root = resolve(input.path ?? context.cwd ?? process.cwd())
     const regex = globToRegex(input.pattern)
     const matches: string[] = []
 
