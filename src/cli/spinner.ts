@@ -2,6 +2,7 @@
  * Spinner — loading/thinking indicators for the terminal.
  *
  * Picks a random whimsical verb, rotates every 2–3 s, shows elapsed time.
+ * Integrates with the progress tracker for structured phase transitions.
  */
 
 import ora, { type Ora } from 'ora'
@@ -9,6 +10,11 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { parse as parseToml } from 'smol-toml'
 import { PURPLE, GREEN, CYAN, DIM } from './theme.js'
+import {
+  setPhase, startToolExecution, endToolExecution, addTokens,
+  setTurn, resetProgress, getPhaseState, formatSessionSummary,
+  type AgentPhase,
+} from './progress.js'
 
 // ---------------------------------------------------------------------------
 // Default verb pool (150+)
@@ -155,6 +161,7 @@ let rotateTimer: ReturnType<typeof setInterval> | null = null
 let startTime = 0
 let currentVerb = 'Thinking'
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
+let lastToolName = ''
 
 function pickVerb(): string {
   loadVerbConfig()
@@ -178,6 +185,7 @@ function rotateVerb(): void {
 
 export function startThinking(_message?: string): void {
   stopSpinner()
+  setPhase('thinking')
   startTime = Date.now()
   currentVerb = pickVerb()
 
@@ -197,6 +205,8 @@ export function startThinking(_message?: string): void {
 
 export function startToolExec(toolName: string): void {
   stopSpinner()
+  startToolExecution(toolName)
+  lastToolName = toolName
   activeSpinner = ora({
     text: `${CYAN(toolName)} ${DIM('executing...')}`,
     spinner: {
@@ -213,6 +223,10 @@ export function spinnerSuccess(message?: string): void {
     activeSpinner.succeed(message ? GREEN(message) : undefined)
     activeSpinner = null
   }
+  if (lastToolName) {
+    endToolExecution(lastToolName, 'success')
+    lastToolName = ''
+  }
   clearTimers()
 }
 
@@ -220,6 +234,10 @@ export function spinnerFail(message?: string): void {
   if (activeSpinner) {
     activeSpinner.fail(message)
     activeSpinner = null
+  }
+  if (lastToolName) {
+    endToolExecution(lastToolName, 'error')
+    lastToolName = ''
   }
   clearTimers()
 }
@@ -253,3 +271,13 @@ function clearTimers(): void {
   if (rotateTimer) { clearInterval(rotateTimer); rotateTimer = null }
   if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
 }
+
+// ---------------------------------------------------------------------------
+// Re-export progress tracker functions for convenience
+// ---------------------------------------------------------------------------
+
+export {
+  setPhase, setTurn, addTokens, resetProgress,
+  getPhaseState, formatSessionSummary,
+  type AgentPhase,
+} from './progress.js'

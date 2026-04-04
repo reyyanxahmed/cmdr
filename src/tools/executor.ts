@@ -1,9 +1,16 @@
 /**
- * Tool executor with concurrency control and error isolation.
+ * Tool executor with concurrency control, Zod validation, and error isolation.
+ *
+ * Mirrors Claude Code's tool execution flow:
+ * 1. Tool lookup (with unknown tool rejection)
+ * 2. Zod schema validation (with corrective error messages)
+ * 3. Concurrency-limited execution
+ * 4. Error isolation (tool failures don't crash the agent loop)
  */
 
 import type { ToolResult, ToolUseContext } from '../core/types.js'
 import type { ToolRegistry } from './registry.js'
+import { validateToolInput } from '../llm/validation/tool-call-schema.js'
 
 export interface ToolExecutorOptions {
   maxConcurrency?: number
@@ -33,20 +40,29 @@ export class ToolExecutor {
   ): Promise<ToolResult> {
     const tool = this.registry.get(name)
     if (!tool) {
-      return { data: `Unknown tool: "${name}"`, isError: true }
+      const availableTools = this.registry.list().map(t => t.name).join(', ')
+      return {
+        data: `Unknown tool: "${name}". Available tools: ${availableTools}`,
+        isError: true,
+      }
+    }
+
+    // Validate input through Zod schema with corrective error messages
+    const validation = validateToolInput(name, input, tool.inputSchema)
+    if (!validation.ok) {
+      return { data: validation.message, isError: true }
     }
 
     try {
-      const parsed = tool.inputSchema.parse(input)
       await this.acquire()
       try {
-        return await tool.execute(parsed, context)
+        return await tool.execute(validation.parsed, context)
       } finally {
         this.release()
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      return { data: `Tool "${name}" error: ${message}`, isError: true }
+      return { data: `Tool "${name}" execution error: ${message}`, isError: true }
     }
   }
 
