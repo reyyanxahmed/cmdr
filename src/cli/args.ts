@@ -15,6 +15,7 @@ export interface CliArgs {
   cwd?: string
   team?: string
   maxTurns?: number
+  outputFormat?: 'text' | 'json' | 'stream-json'
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -69,6 +70,9 @@ export function parseArgs(argv: string[]): CliArgs {
       case '-t':
         args.team = argv[++i]
         break
+      case '--output-format':
+        args.outputFormat = argv[++i] as 'text' | 'json' | 'stream-json'
+        break
       default:
         // If no flag prefix, treat as inline prompt
         if (!arg.startsWith('-') && !args.prompt) {
@@ -101,6 +105,7 @@ export function printHelp(): void {
     --cwd <path>             Set working directory
     --verbose                Print full tool output (default: collapsed)
     --max-turns <n>          Maximum agent turns before stopping
+    --output-format <fmt>    Output format: text (default), json, stream-json
     -h, --help               Show this help
     -v, --version            Show version
     --dangerously-skip-permissions  Auto-approve all tool calls (yolo mode)
