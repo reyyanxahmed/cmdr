@@ -13,8 +13,10 @@ import { GREEN, PURPLE, DIM, renderError, WHITE, CYAN } from '../src/cli/theme.j
 import { OllamaAdapter } from '../src/llm/ollama.js'
 import { checkForUpdate } from '../src/cli/update-checker.js'
 import * as readline from 'readline'
+import { createRequire } from 'module'
 
-const VERSION = '2.0.1'
+const require = createRequire(import.meta.url)
+const { version: VERSION } = require('../package.json')
 
 /** Prompt user to pick a model from the list. */
 function promptModelSelection(models: string[]): Promise<string> {
