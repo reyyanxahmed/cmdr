@@ -34,6 +34,52 @@ interface PersistedSettings {
   permissionMode?: PermissionMode
   pathRules?: PathRule[]
   bashRules?: BashRule[]
+  /** Pattern-based permission rules: "Tool(specifier)" syntax. */
+  permissionRules?: PermissionRule[]
+}
+
+// ---------------------------------------------------------------------------
+// Pattern-based permission rules — Claude Code-compatible syntax
+// ---------------------------------------------------------------------------
+
+/**
+ * Pattern rule: "Tool(specifier)" format.
+ * Examples:
+ *   allow: ["bash(npm run *)", "file_read(src/**)"]
+ *   deny:  ["bash(curl *)", "file_read(.env)"]
+ *   ask:   ["bash(git push *)"]
+ *
+ * Priority: deny > ask > allow (most restrictive wins).
+ */
+export interface PermissionRule {
+  /** 'allow' auto-approves, 'deny' auto-blocks, 'ask' always prompts. */
+  action: 'allow' | 'deny' | 'ask'
+  /** Tool name to match. */
+  tool: string
+  /** Optional glob pattern for the tool's primary argument. */
+  pattern?: string
+}
+
+/**
+ * Parse a permission rule string like "bash(npm run *)" into structured form.
+ */
+export function parsePermissionRule(rule: string, action: 'allow' | 'deny' | 'ask'): PermissionRule {
+  const match = rule.match(/^(\w+)(?:\((.+)\))?$/)
+  if (!match) {
+    return { action, tool: rule.trim() }
+  }
+  return {
+    action,
+    tool: match[1],
+    pattern: match[2],
+  }
+}
+
+/**
+ * Check if a permission rule's pattern matches a given value.
+ */
+function matchesPattern(pattern: string, value: string): boolean {
+  return globMatch(pattern, value)
 }
 
 // ---------------------------------------------------------------------------
@@ -100,6 +146,8 @@ export class PermissionManager {
   private pathRules: PathRule[] = []
   /** Command-prefix rules for bash tool. */
   private bashRules: BashRule[] = []
+  /** Pattern-based permission rules (Tool(pattern) syntax). */
+  private permissionRules: PermissionRule[] = []
   /** Project root for resolving relative paths in rules. */
   private projectRoot: string = process.cwd()
 
@@ -130,6 +178,9 @@ export class PermissionManager {
       if (settings.bashRules) {
         this.bashRules = settings.bashRules
       }
+      if (settings.permissionRules) {
+        this.permissionRules = settings.permissionRules
+      }
     } catch {
       // no settings file yet — that's fine
     }
@@ -144,6 +195,7 @@ export class PermissionManager {
         permissionMode: this.mode,
         pathRules: this.pathRules.length > 0 ? this.pathRules : undefined,
         bashRules: this.bashRules.length > 0 ? this.bashRules : undefined,
+        permissionRules: this.permissionRules.length > 0 ? this.permissionRules : undefined,
       }
       await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8')
     } catch {
@@ -168,6 +220,24 @@ export class PermissionManager {
   /** Add a bash command rule (e.g. allow "npm test"). */
   addBashRule(prefix: string, allow: boolean = true): void {
     this.bashRules.push({ prefix, allow })
+  }
+
+  /** Add a pattern permission rule (e.g. "bash(npm run *)" with action "allow"). */
+  addPermissionRule(ruleString: string, action: 'allow' | 'deny' | 'ask'): void {
+    this.permissionRules.push(parsePermissionRule(ruleString, action))
+  }
+
+  /** Load permission rules from config format: { allow: [...], deny: [...], ask: [...] } */
+  loadPermissionRules(config: { allow?: string[]; deny?: string[]; ask?: string[] }): void {
+    for (const rule of config.allow ?? []) {
+      this.permissionRules.push(parsePermissionRule(rule, 'allow'))
+    }
+    for (const rule of config.deny ?? []) {
+      this.permissionRules.push(parsePermissionRule(rule, 'deny'))
+    }
+    for (const rule of config.ask ?? []) {
+      this.permissionRules.push(parsePermissionRule(rule, 'ask'))
+    }
   }
 
   /**
@@ -210,6 +280,12 @@ export class PermissionManager {
    * Returns true if auto-approved by rules, false otherwise.
    */
   private checkFineGrainedRules(toolName: string, input: Record<string, unknown>): boolean {
+    // Check pattern-based permission rules first (highest priority system)
+    const patternResult = this.checkPermissionRules(toolName, input)
+    if (patternResult === 'deny') return false
+    if (patternResult === 'allow') return true
+    // 'ask' falls through to normal flow
+
     // File tool path checks
     if (FILE_TOOLS.has(toolName)) {
       const path = (input.path ?? input.filePath ?? input.file) as string | undefined
@@ -229,6 +305,67 @@ export class PermissionManager {
     }
 
     return false
+  }
+
+  /**
+   * Check pattern-based permission rules.
+   * Priority: deny > ask > allow (most restrictive wins).
+   * Returns 'allow', 'deny', 'ask', or undefined if no matching rule.
+   */
+  private checkPermissionRules(
+    toolName: string,
+    input: Record<string, unknown>,
+  ): 'allow' | 'deny' | 'ask' | undefined {
+    // Collect matching rules
+    const matches: PermissionRule[] = []
+
+    // Get the primary argument for pattern matching
+    const primaryArg = this.getPrimaryArg(toolName, input)
+
+    for (const rule of this.permissionRules) {
+      if (rule.tool !== toolName) continue
+
+      // If rule has no pattern, it matches all invocations of this tool
+      if (!rule.pattern) {
+        matches.push(rule)
+        continue
+      }
+
+      // If rule has a pattern, check against primary arg
+      if (primaryArg && matchesPattern(rule.pattern, primaryArg)) {
+        matches.push(rule)
+      }
+    }
+
+    if (matches.length === 0) return undefined
+
+    // Priority: deny > ask > allow
+    if (matches.some(r => r.action === 'deny')) return 'deny'
+    if (matches.some(r => r.action === 'ask')) return 'ask'
+    if (matches.some(r => r.action === 'allow')) return 'allow'
+
+    return undefined
+  }
+
+  /**
+   * Extract the primary argument from tool input for pattern matching.
+   * Each tool type uses a different "primary" argument.
+   */
+  private getPrimaryArg(toolName: string, input: Record<string, unknown>): string | undefined {
+    switch (toolName) {
+      case 'bash':
+        return (input.command ?? input.cmd) as string | undefined
+      case 'file_read':
+      case 'file_write':
+      case 'file_edit':
+        return (input.path ?? input.filePath ?? input.file) as string | undefined
+      case 'web_fetch':
+      case 'web_search':
+        return (input.url ?? input.query) as string | undefined
+      default:
+        // Try common argument names
+        return (input.path ?? input.command ?? input.url ?? input.query) as string | undefined
+    }
   }
 
   /**
@@ -259,12 +396,17 @@ export class PermissionManager {
   /**
    * Gate a tool call. If approval is needed, calls the approvalCallback.
    * Returns the decision (allow/deny). Handles 'allow-always' by recording it.
+   * Pattern deny rules auto-block without prompting.
    */
   async gate(
     toolName: string,
     input: Record<string, unknown>,
     approvalCallback: ApprovalCallback,
   ): Promise<'allow' | 'deny'> {
+    // Check for auto-deny from pattern rules (bypass everything)
+    const patternResult = this.checkPermissionRules(toolName, input)
+    if (patternResult === 'deny') return 'deny'
+
     if (!this.needsApproval(toolName, input)) {
       return 'allow'
     }

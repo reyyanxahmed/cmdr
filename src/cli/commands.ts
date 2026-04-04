@@ -441,7 +441,7 @@ registerCommand({
 
 registerCommand({
   name: 'mcp',
-  description: 'Manage MCP servers: /mcp list, /mcp connect <url>',
+  description: 'Manage MCP servers: /mcp list, /mcp connect <url>, /mcp add <name>, /mcp list-available',
   execute: async (args) => {
     return `__MCP__:${args || 'list'}`
   },

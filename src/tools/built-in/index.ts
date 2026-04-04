@@ -16,17 +16,28 @@ import { gitCommitTool, gitBranchTool } from './git-commit.js'
 import { gitWorktreeTool } from './git-worktree.js'
 import { thinkTool } from './think.js'
 import { webFetchTool } from './web-fetch.js'
+import { webSearchTool } from './web-search.js'
 import { askUserTool } from './ask-user.js'
 import { memoryReadTool, memoryWriteTool } from './memory.js'
 import { lspDiagnosticsTool } from './diagnostics.js'
 import { notebookReadTool, notebookEditTool, notebookRunTool } from './notebook.js'
+import { todoWriteTool } from './todo-tool.js'
+import { taskCreateTool, taskListTool, taskGetTool, taskStopTool } from './task-tools.js'
+import { cronCreateTool, cronListTool, cronDeleteTool } from './cron-tools.js'
+import { enterPlanModeTool, exitPlanModeTool } from './plan-tools.js'
+import { mcpListResourcesTool, mcpReadResourceTool } from './mcp-resource-tools.js'
 
 export {
   bashTool, fileReadTool, fileWriteTool, fileEditTool,
   grepTool, globTool, gitDiffTool, gitLogTool, gitCommitTool, gitBranchTool,
   gitWorktreeTool, lspDiagnosticsTool,
   notebookReadTool, notebookEditTool, notebookRunTool,
-  thinkTool, webFetchTool, askUserTool, memoryReadTool, memoryWriteTool,
+  thinkTool, webFetchTool, webSearchTool, askUserTool, memoryReadTool, memoryWriteTool,
+  todoWriteTool,
+  taskCreateTool, taskListTool, taskGetTool, taskStopTool,
+  cronCreateTool, cronListTool, cronDeleteTool,
+  enterPlanModeTool, exitPlanModeTool,
+  mcpListResourcesTool, mcpReadResourceTool,
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,7 +46,12 @@ export const BUILT_IN_TOOLS: ToolDefinition<any>[] = [
   grepTool, globTool, gitDiffTool, gitLogTool, gitCommitTool, gitBranchTool,
   gitWorktreeTool, lspDiagnosticsTool,
   notebookReadTool, notebookEditTool, notebookRunTool,
-  thinkTool, webFetchTool, askUserTool, memoryReadTool, memoryWriteTool,
+  thinkTool, webFetchTool, webSearchTool, askUserTool, memoryReadTool, memoryWriteTool,
+  todoWriteTool,
+  taskCreateTool, taskListTool, taskGetTool, taskStopTool,
+  cronCreateTool, cronListTool, cronDeleteTool,
+  enterPlanModeTool, exitPlanModeTool,
+  mcpListResourcesTool, mcpReadResourceTool,
 ]
 
 export function registerBuiltInTools(registry: ToolRegistry): void {

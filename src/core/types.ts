@@ -295,11 +295,16 @@ export interface CmdrConfig {
     allowFileWrite: boolean
     allowNetwork: boolean
     sandboxDir?: string
+    /** Pattern-based rules: "Tool(pattern)" syntax. */
+    allow?: string[]
+    deny?: string[]
+    ask?: string[]
   }
   mcp: {
     servers: McpServerConfig[]
   }
   plugins: string[]
+  hooks?: Record<string, string>
 }
 
 export interface McpServerConfig {
