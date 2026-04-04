@@ -52,6 +52,7 @@ export interface ReplOptions {
   verbose?: boolean
   team?: string
   maxTurns?: number
+  outputFormat?: 'text' | 'json' | 'stream-json'
 }
 
 export async function startRepl(options: ReplOptions): Promise<void> {
@@ -251,7 +252,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   // --- Handle one-shot prompt (non-interactive) ---
   if (options.initialPrompt) {
-    await handleOneShot(options.initialPrompt, agent, session, currentModel, permissionManager, verbose, adapter, costTracker, undoManager)
+    await handleOneShot(options.initialPrompt, agent, session, currentModel, permissionManager, verbose, adapter, costTracker, undoManager, options.outputFormat)
     await doSave()
     return
   }
@@ -304,7 +305,83 @@ async function handleOneShot(
   adapter: LLMAdapter,
   costTracker: CostTracker,
   undoManager: UndoManager,
+  outputFormat: 'text' | 'json' | 'stream-json' = 'text',
 ): Promise<void> {
+  // JSON or stream-json output — structured machine-readable output
+  if (outputFormat === 'json' || outputFormat === 'stream-json') {
+    const startTime = Date.now()
+    let fullOutput = ''
+    const toolsCalled: string[] = []
+
+    try {
+      for await (const event of agent.stream(message)) {
+        switch (event.type) {
+          case 'text': {
+            const chunk = event.data as string
+            fullOutput += chunk
+            if (outputFormat === 'stream-json') {
+              console.log(JSON.stringify({ type: 'text', data: chunk }))
+            }
+            break
+          }
+          case 'tool_use': {
+            const block = event.data as ToolUseBlock
+            toolsCalled.push(block.name)
+            if (outputFormat === 'stream-json') {
+              console.log(JSON.stringify({ type: 'tool_use', name: block.name, input: block.input }))
+            }
+            break
+          }
+          case 'tool_result': {
+            const block = event.data as ToolResultBlock
+            if (outputFormat === 'stream-json') {
+              console.log(JSON.stringify({ type: 'tool_result', name: toolsCalled[toolsCalled.length - 1], data: block.content, is_error: block.is_error }))
+            }
+            break
+          }
+          case 'done': break
+          case 'error': {
+            const err = event.data as Error
+            if (outputFormat === 'stream-json') {
+              console.log(JSON.stringify({ type: 'error', message: err.message }))
+            }
+            break
+          }
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (outputFormat === 'stream-json') {
+        console.log(JSON.stringify({ type: 'error', message: msg }))
+      }
+    }
+
+    const state = agent.getState()
+    const tokens = state.tokenUsage
+    const durationMs = Date.now() - startTime
+
+    if (outputFormat === 'json') {
+      console.log(JSON.stringify({
+        model,
+        response: fullOutput,
+        tools_called: toolsCalled,
+        tokens: { input: tokens.input_tokens, output: tokens.output_tokens },
+        duration_ms: durationMs,
+      }))
+    } else {
+      console.log(JSON.stringify({
+        type: 'done',
+        tokens: { input: tokens.input_tokens, output: tokens.output_tokens },
+        duration_ms: durationMs,
+      }))
+    }
+
+    costTracker.record(model, tokens.input_tokens, tokens.output_tokens, toolsCalled.length)
+    session.syncFromAgent(agent.getHistory())
+    return
+  }
+
+  // Text output — standard interactive display
   console.log('')
   startThinking()
 

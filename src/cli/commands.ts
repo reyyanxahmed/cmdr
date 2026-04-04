@@ -551,6 +551,35 @@ registerCommand({
 })
 
 registerCommand({
+  name: 'memory',
+  description: 'Context memory: /memory show, /memory refresh',
+  execute: async (args, context) => {
+    const sub = args.trim().toLowerCase()
+
+    if (!sub || sub === 'show') {
+      const instructions = context.session.projectContext.cmdrInstructions
+      if (!instructions) {
+        return renderInfo('No CMDR.md context loaded.')
+      }
+      const lineCount = instructions.split('\n').length
+      const lines = [
+        '',
+        `  ${PURPLE.bold('Loaded context')} ${DIM(`(${lineCount} lines)`)}`,
+        '',
+        ...instructions.split('\n').slice(0, 30).map(l => `  ${DIM('│')} ${WHITE(l)}`),
+        instructions.split('\n').length > 30 ? `  ${DIM(`  ... (${lineCount - 30} more lines)`)}` : '',
+        '',
+      ]
+      return lines.filter(Boolean).join('\n')
+    }
+
+    if (sub === 'refresh') return '__MEMORY_REFRESH__'
+
+    return renderInfo('Usage: /memory [show|refresh]')
+  },
+})
+
+registerCommand({
   name: 'quit',
   description: 'Exit cmdr',
   execute: async () => {

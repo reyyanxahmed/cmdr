@@ -5,6 +5,7 @@
 import { readFile, stat, readdir } from 'fs/promises'
 import { join } from 'path'
 import { spawn } from 'child_process'
+import { homedir } from 'os'
 import type { ProjectContext } from '../core/types.js'
 
 export async function discoverProject(rootDir: string): Promise<ProjectContext> {
@@ -74,18 +75,42 @@ export async function discoverProject(rootDir: string): Promise<ProjectContext> 
     }
   }
 
-  // CMDR.md workspace instructions (check both CMDR.md and .cmdr/instructions.md)
+  // CMDR.md — hierarchical context files
+  // Priority: global (~/.cmdr/CMDR.md) < project root < subdirectories (deeper = higher)
   const instructionParts: string[] = []
+
+  // 1. Global user-level CMDR.md
+  try {
+    const globalMd = await readFile(join(homedir(), '.cmdr', 'CMDR.md'), 'utf-8')
+    if (globalMd.trim()) instructionParts.push(`<!-- ~/.cmdr/CMDR.md -->\n${globalMd.trim()}`)
+  } catch { /* no global CMDR.md */ }
+
+  // 2. Project root CMDR.md and .cmdr/instructions.md
   try {
     const cmdrMd = await readFile(join(rootDir, 'CMDR.md'), 'utf-8')
-    if (cmdrMd.trim()) instructionParts.push(cmdrMd.trim())
+    if (cmdrMd.trim()) instructionParts.push(`<!-- CMDR.md -->\n${cmdrMd.trim()}`)
   } catch { /* no CMDR.md */ }
   try {
     const dotCmdrMd = await readFile(join(rootDir, '.cmdr', 'instructions.md'), 'utf-8')
     if (dotCmdrMd.trim()) instructionParts.push(dotCmdrMd.trim())
   } catch { /* no .cmdr/instructions.md */ }
-  if (instructionParts.length > 0) {
-    context.cmdrInstructions = instructionParts.join('\n\n')
+
+  // 3. Scan top-level subdirectories for scoped CMDR.md files
+  try {
+    const entries = await readdir(rootDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue
+      try {
+        const subMd = await readFile(join(rootDir, entry.name, 'CMDR.md'), 'utf-8')
+        if (subMd.trim()) instructionParts.push(`<!-- ${entry.name}/CMDR.md -->\n${subMd.trim()}`)
+      } catch { /* no sub CMDR.md */ }
+    }
+  } catch { /* ignore readdir errors */ }
+
+  // Process @import syntax: lines like "@shared/standards.md"
+  const processed = await resolveImports(instructionParts.join('\n\n'), rootDir)
+  if (processed.trim()) {
+    context.cmdrInstructions = processed
   }
 
   // Key files
@@ -101,6 +126,30 @@ export async function discoverProject(rootDir: string): Promise<ProjectContext> 
   }
 
   return context
+}
+
+/** Resolve @path import directives in CMDR.md content. */
+async function resolveImports(content: string, rootDir: string): Promise<string> {
+  const lines = content.split('\n')
+  const result: string[] = []
+
+  for (const line of lines) {
+    const importMatch = line.match(/^@(\S+\.md)\s*$/)
+    if (importMatch) {
+      const importPath = join(rootDir, importMatch[1])
+      try {
+        const imported = await readFile(importPath, 'utf-8')
+        result.push(`<!-- @${importMatch[1]} -->`)
+        result.push(imported.trim())
+      } catch {
+        result.push(`<!-- @${importMatch[1]} (not found) -->`)
+      }
+    } else {
+      result.push(line)
+    }
+  }
+
+  return result.join('\n')
 }
 
 async function fileExists(path: string): Promise<boolean> {
