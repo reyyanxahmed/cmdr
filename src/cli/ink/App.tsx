@@ -28,6 +28,7 @@ import type { PluginManager } from '../../plugins/plugin-manager.js'
 import type { McpClient } from '../../plugins/mcp-client.js'
 import type { ToolRegistry } from '../../tools/registry.js'
 import type { AgentRegistry } from '../../agents/registry.js'
+import type { CommandLoader } from '../../commands/loader.js'
 import StatusBar from './StatusBar.js'
 
 // We use chalk directly for coloring since Ink <Text> color props are limited
@@ -108,6 +109,7 @@ export interface InkAppProps {
   mcpClient: McpClient
   toolRegistry: ToolRegistry
   agentRegistry: AgentRegistry
+  commandLoader: CommandLoader
   ollamaUrl: string
   verbose: boolean
   doSave: () => Promise<void>
@@ -184,7 +186,7 @@ export default function App(props: InkAppProps): React.ReactElement {
   const {
     agent, session, permissionManager, adapter,
     orchestrator, costTracker, undoManager,
-    pluginManager, mcpClient, toolRegistry, agentRegistry, ollamaUrl, verbose,
+    pluginManager, mcpClient, toolRegistry, agentRegistry, commandLoader, ollamaUrl, verbose,
     doSave, autoSaver,
   } = props
 
@@ -201,6 +203,7 @@ export default function App(props: InkAppProps): React.ReactElement {
   const [tokensIn, setTokensIn] = useState(0)
   const [tokensOut, setTokensOut] = useState(0)
   const [turnCount, setTurnCount] = useState(0)
+  const planModeRef = useRef(false)
 
   const currentModelRef = useRef(props.model)
   const activeTeamRef = useRef(props.activeTeamConfig)
@@ -788,10 +791,45 @@ export default function App(props: InkAppProps): React.ReactElement {
       return false
     }
 
+    if (result === '__CUSTOM_COMMANDS_LIST__') {
+      const cmds = commandLoader.list()
+      if (cmds.length === 0) {
+        appendOutput(`  ${DIM('No custom commands. Create with /command create <name>')}`)
+      } else {
+        const lines = ['', `  ${PURPLE.bold('Custom commands')} ${DIM(`(${cmds.length})`)}`, '']
+        for (const cmd of cmds) {
+          lines.push(`  ${GREEN('•')} ${CYAN('/' + cmd.name.padEnd(16))} ${WHITE(cmd.description)} ${DIM(`[${cmd.source}]`)}`)
+        }
+        lines.push('')
+        lines.push(`  ${DIM('Run with: /<name> <arguments>')}`)
+        lines.push('')
+        appendLines(lines)
+      }
+      return false
+    }
+
+    if (typeof result === 'string' && result.startsWith('__CUSTOM_COMMAND_CREATE__:')) {
+      const cmdName = result.slice('__CUSTOM_COMMAND_CREATE__:'.length)
+      const filePath = commandLoader.scaffold(cmdName, process.cwd())
+      appendOutput(`  ${DIM('ℹ')} ${WHITE(`Created command scaffold: ${GREEN(filePath)}`)}`)
+      commandLoader.loadAll(process.cwd())
+      return false
+    }
+
+    if (result === '__PLAN_TOGGLE__') {
+      planModeRef.current = !planModeRef.current
+      if (planModeRef.current) {
+        appendOutput(`  ${PURPLE('◈')} ${WHITE('Plan mode')} ${GREEN('ON')} ${DIM('— agent will only analyze and plan, no changes')}`)
+      } else {
+        appendOutput(`  ${PURPLE('◈')} ${WHITE('Plan mode')} ${RED('OFF')} ${DIM('— full tool access restored')}`)
+      }
+      return false
+    }
+
     if (result) appendOutput(String(result))
     return false
   }, [agent, session, permissionManager, adapter, ollamaUrl, toolRegistry,
-      orchestrator, costTracker, undoManager, pluginManager, mcpClient,
+      orchestrator, costTracker, undoManager, pluginManager, mcpClient, commandLoader,
       cleanupAndExit, appendOutput, appendLines])
 
   // ---------------------------------------------------------------------------
@@ -812,8 +850,22 @@ export default function App(props: InkAppProps): React.ReactElement {
 
     try {
       if (isSlashCommand(input)) {
-        const shouldExit = await processCommand(input)
-        if (shouldExit) return
+        // Check if it's a custom command first
+        const { name: cmdName, args: cmdArgs } = parseSlashCommand(input)
+        const customCmd = commandLoader.get(cmdName)
+        if (customCmd && !getCommand(cmdName)) {
+          // Resolve template and send as user message
+          const resolved = commandLoader.resolve(customCmd, cmdArgs, process.cwd())
+          if (planModeRef.current) {
+            const planMsg = `[System: PLAN MODE is active. Analyze only — do NOT make changes. Produce a numbered step-by-step plan.]\n\n${resolved}`
+            await handleUserMessage(planMsg)
+          } else {
+            await handleUserMessage(resolved)
+          }
+        } else {
+          const shouldExit = await processCommand(input)
+          if (shouldExit) return
+        }
       } else if (input.startsWith('@')) {
         // @agent syntax: @investigator explain the auth flow
         const spaceIdx = input.indexOf(' ')
@@ -832,6 +884,9 @@ export default function App(props: InkAppProps): React.ReactElement {
         }
       } else if (activeTeamRef.current) {
         await handleTeamMessage(input, activeTeamRef.current)
+      } else if (planModeRef.current) {
+        const planMsg = `[System: PLAN MODE is active. Analyze the request and produce a numbered step-by-step plan. Do NOT make any changes.]\n\n${input}`
+        await handleUserMessage(planMsg)
       } else {
         await handleUserMessage(input)
       }

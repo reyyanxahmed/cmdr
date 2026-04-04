@@ -8,6 +8,7 @@ import {
   renderSessionStatus, renderContextWindow, SEPARATOR, renderInfo,
 } from './theme.js'
 import { listThemeNames, getActiveTheme, setActiveTheme, t } from './themes.js'
+import type { CommandLoader } from '../commands/loader.js'
 import { getDefaultContextLength, getAllModels, getModelInfo } from '../llm/model-registry.js'
 import { countTokens } from '../llm/token-counter.js'
 import { listSessions } from '../session/session-persistence.js'
@@ -517,6 +518,35 @@ registerCommand({
       return renderInfo(`Theme set to ${GREEN(name)}`)
     }
     return renderInfo(`Unknown theme: ${RED(name)}. Use /theme list to see options.`)
+  },
+})
+
+registerCommand({
+  name: 'commands',
+  description: 'List custom commands',
+  execute: async () => {
+    return '__CUSTOM_COMMANDS_LIST__'
+  },
+})
+
+registerCommand({
+  name: 'command',
+  description: 'Custom command management: create <name>',
+  execute: async (args) => {
+    const parts = args.trim().split(/\s+/)
+    const sub = parts[0]?.toLowerCase()
+    const rest = parts.slice(1).join(' ')
+
+    if (sub === 'create' && rest) return `__CUSTOM_COMMAND_CREATE__:${rest}`
+    return renderInfo('Usage: /command create <name>')
+  },
+})
+
+registerCommand({
+  name: 'plan',
+  description: 'Toggle plan mode (read-only analysis)',
+  execute: async () => {
+    return '__PLAN_TOGGLE__'
   },
 })
 
