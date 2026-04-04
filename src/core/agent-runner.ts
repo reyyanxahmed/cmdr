@@ -15,6 +15,20 @@ import type { PermissionManager } from './permissions.js'
 import { classifyIntent, filterToolsByIntent, detectFrustration, FRUSTRATION_NUDGE } from './intent.js'
 
 // ---------------------------------------------------------------------------
+// Safe parallel tools — read-only tools that can safely run concurrently
+// ---------------------------------------------------------------------------
+
+const SAFE_PARALLEL_TOOLS = new Set([
+  'file_read',
+  'grep',
+  'grep_search',
+  'glob',
+  'git_diff',
+  'git_log',
+  'think',
+])
+
+// ---------------------------------------------------------------------------
 // Public interfaces
 // ---------------------------------------------------------------------------
 
@@ -221,7 +235,8 @@ export class AgentRunner {
           break
         }
 
-        // Step 4: Execute all tool calls in parallel
+        // Step 4: Execute tool calls — parallelize safe read-only tools,
+        // execute write/dangerous tools sequentially.
         const toolContext: ToolUseContext = {
           agent: {
             name: this.options.agentName ?? 'cmdr',
@@ -232,7 +247,9 @@ export class AgentRunner {
           abortSignal: this.options.abortSignal,
         }
 
-        const executionPromises = pendingToolUse.map(async (block) => {
+        const allSafe = pendingToolUse.every(tc => SAFE_PARALLEL_TOOLS.has(tc.name))
+
+        const executeOne = async (block: ToolUseBlock) => {
           callbacks.onToolCall?.(block.name, block.input)
 
           // --- HITL gate: check permissions before executing ---
@@ -291,9 +308,20 @@ export class AgentRunner {
           }
 
           return { resultBlock, record }
-        })
+        }
 
-        const executions = await Promise.all(executionPromises)
+        let executions: { resultBlock: ToolResultBlock; record: ToolCallRecord }[]
+
+        if (allSafe) {
+          // All tools are read-only — execute in parallel
+          executions = await Promise.all(pendingToolUse.map(executeOne))
+        } else {
+          // Mixed or write tools — execute sequentially for safety
+          executions = []
+          for (const block of pendingToolUse) {
+            executions.push(await executeOne(block))
+          }
+        }
 
         // Step 5: Accumulate results
         const toolResultBlocks: ContentBlock[] = executions.map(e => e.resultBlock)

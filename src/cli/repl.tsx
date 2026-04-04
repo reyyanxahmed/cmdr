@@ -34,6 +34,7 @@ import { PluginManager } from '../plugins/plugin-manager.js'
 import { McpClient } from '../plugins/mcp-client.js'
 import { loadConfig } from '../config/config-loader.js'
 import { AgentRegistry, AgentExecutor, createSubagentTool } from '../agents/index.js'
+import { CommandLoader } from '../commands/index.js'
 import { CostTracker } from '../session/cost-tracker.js'
 import { UndoManager } from '../session/undo-manager.js'
 import { startThinking, stopSpinner, spinnerSuccess, spinnerFail, getCompletionSummary, startToolExec } from './spinner.js'
@@ -142,6 +143,14 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   const agentCount = agentRegistry.list().length
   if (agentCount > 0) {
     console.log(`  ${DIM(`Agents: ${agentCount} loaded (${agentRegistry.list().map(a => a.name).join(', ')})`)}`)
+  }
+
+  // Load custom commands
+  const commandLoader = new CommandLoader()
+  commandLoader.loadAll(cwd)
+  const customCmdCount = commandLoader.list().length
+  if (customCmdCount > 0) {
+    console.log(`  ${DIM(`Commands: ${customCmdCount} custom (${commandLoader.list().map(c => c.name).join(', ')})`)}`)
   }
 
   // Cost tracker
@@ -263,6 +272,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
       mcpClient,
       toolRegistry,
       agentRegistry,
+      commandLoader,
       ollamaUrl: options.ollamaUrl,
       verbose,
       doSave,
