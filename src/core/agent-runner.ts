@@ -14,6 +14,7 @@ import type { ToolExecutor } from '../tools/executor.js'
 import type { PermissionManager } from './permissions.js'
 import { classifyIntent, filterToolsByIntent, detectFrustration, FRUSTRATION_NUDGE } from './intent.js'
 import { ContentReplacer } from './content-replacement.js'
+import { globalEventBus } from './event-bus.js'
 
 // ---------------------------------------------------------------------------
 // Safe parallel tools — read-only tools that can safely run concurrently
@@ -178,6 +179,9 @@ export class AgentRunner {
 
         turns++
 
+        // Emit turn:start event
+        globalEventBus.emit('turn:start', { turn: turns, model: this.options.model })
+
         // Dynamic tool injection:
         // Turn 1 uses intent-filtered tools (may be empty for chat).
         // Turns 2+ (model is mid-agentic-loop after tool results) get full tools.
@@ -201,6 +205,9 @@ export class AgentRunner {
         const pendingToolUse: ToolUseBlock[] = []
         let turnUsage: TokenUsage = ZERO_USAGE
 
+        // Emit llm:request event
+        globalEventBus.emit('llm:request', { model: this.options.model, messageCount: conversationMessages.length })
+
         for await (const event of this.adapter.stream(conversationMessages, turnChatOptions)) {
           if (event.type === 'text') {
             const chunk = event.data as string
@@ -215,12 +222,16 @@ export class AgentRunner {
             const response = event.data as LLMResponse
             turnUsage = response.usage
           } else if (event.type === 'error') {
+            globalEventBus.emit('llm:error', { model: this.options.model, error: String((event.data as Error).message) })
             yield event
             return
           }
         }
 
         totalUsage = addTokenUsage(totalUsage, turnUsage)
+
+        // Emit llm:response event
+        globalEventBus.emit('llm:response', { model: this.options.model, usage: turnUsage, stopReason: pendingToolUse.length > 0 ? 'tool_use' : 'end_turn' })
 
         // Build assistant content blocks
         if (turnText) {
@@ -241,6 +252,8 @@ export class AgentRunner {
         // Step 3: No tools? We're done.
         if (pendingToolUse.length === 0) {
           finalOutput = turnText
+          // Emit turn:end for the final turn
+          globalEventBus.emit('turn:end', { turn: turns, tokenUsage: turnUsage, toolCallCount: 0 })
           break
         }
 
@@ -262,6 +275,9 @@ export class AgentRunner {
         const executeOne = async (block: ToolUseBlock) => {
           callbacks.onToolCall?.(block.name, block.input)
 
+          // Emit tool:before event
+          globalEventBus.emit('tool:before', { name: block.name, input: block.input })
+
           // --- HITL gate: check permissions before executing ---
           if (this.permissionManager && callbacks.onToolApproval) {
             const decision = await this.permissionManager.gate(
@@ -274,6 +290,7 @@ export class AgentRunner {
                 data: `Tool "${block.name}" was denied by the user.`,
                 isError: true,
               }
+              globalEventBus.emit('tool:denied', { name: block.name, reason: 'User denied permission' })
               callbacks.onToolResult?.(block.name, deniedResult)
               const resultBlock: ToolResultBlock = {
                 type: 'tool_result',
@@ -301,6 +318,14 @@ export class AgentRunner {
           }
 
           const duration = Date.now() - startTime
+
+          // Emit tool lifecycle events
+          if (result.isError) {
+            globalEventBus.emit('tool:error', { name: block.name, error: result.data })
+          } else {
+            globalEventBus.emit('tool:after', { name: block.name, result, durationMs: duration })
+          }
+
           callbacks.onToolResult?.(block.name, result)
 
           // Truncate large outputs to prevent context overflow
@@ -353,6 +378,9 @@ export class AgentRunner {
 
         conversationMessages.push(toolResultMessage)
         callbacks.onMessage?.(toolResultMessage)
+
+        // Emit turn:end event
+        globalEventBus.emit('turn:end', { turn: turns, tokenUsage: turnUsage, toolCallCount: pendingToolUse.length })
 
         // Loop back — send updated conversation to LLM
       }

@@ -44,6 +44,12 @@ import { execSync } from 'node:child_process'
 import { startThinking, stopSpinner, spinnerSuccess, spinnerFail, getCompletionSummary, startToolExec } from './spinner.js'
 import type { RunCallbacks } from '../core/agent-runner.js'
 import App from './ink/App.js'
+import { globalEventBus } from '../core/event-bus.js'
+import { TaskScheduler } from '../scheduling/task-scheduler.js'
+import { setTaskScheduler } from '../tools/built-in/task-tools.js'
+import { setCronScheduler } from '../tools/built-in/cron-tools.js'
+import { setMcpClient } from '../tools/built-in/mcp-resource-tools.js'
+import { HookManager } from '../core/hooks.js'
 
 export interface ReplOptions {
   model: string
@@ -154,6 +160,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     }
   }
   mcpClient.registerTools(toolRegistry)
+  setMcpClient(mcpClient)
 
   // Load subagent registry
   const agentRegistry = new AgentRegistry()
@@ -187,6 +194,15 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   // Undo manager
   const undoManager = new UndoManager()
 
+  // Task scheduler
+  const taskScheduler = new TaskScheduler()
+  setTaskScheduler(taskScheduler)
+  setCronScheduler(taskScheduler)
+
+  // Hooks
+  const hookManager = new HookManager(config.hooks ?? {}, cwd)
+  hookManager.wireEventBus()
+
   // Permission manager
   const permissionManager = new PermissionManager(
     options.dangerouslySkipPermissions ? 'yolo' : 'normal',
@@ -195,6 +211,14 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   permissionManager.setProjectRoot(cwd)
   if (options.dangerouslySkipPermissions) {
     permissionManager.setMode('yolo')
+  }
+  // Load pattern permission rules from config
+  if (config.permissions.allow || config.permissions.deny || config.permissions.ask) {
+    permissionManager.loadPermissionRules({
+      allow: config.permissions.allow,
+      deny: config.permissions.deny,
+      ask: config.permissions.ask,
+    })
   }
 
   // Orchestrator for team mode
@@ -238,6 +262,12 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     permissionManager,
     { memoryManager },
   )
+
+  // Start background task scheduler
+  taskScheduler.start()
+
+  // Emit session start event
+  globalEventBus.emit('session:start', { sessionId: session.id ?? 'default' })
 
   // --- Welcome banner (prints to normal terminal before Ink takes over) ---
   let gitBranch: string | undefined
@@ -325,6 +355,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
       toolRegistry,
       agentRegistry,
       commandLoader,
+      taskScheduler,
       ollamaUrl: options.ollamaUrl,
       verbose,
       doSave,
@@ -340,7 +371,14 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   await app.waitUntilExit()
 
-  // Cleanup background watcher
+  // Cleanup
+  taskScheduler.stop()
+  globalEventBus.emit('session:end', {
+    sessionId: session.id ?? 'default',
+    messageCount: agent.getHistory().length,
+    totalTokens: agent.getState().tokenUsage,
+  })
+  globalEventBus.removeAll()
   modelWatcher?.stop()
 }
 

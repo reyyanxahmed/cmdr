@@ -29,6 +29,8 @@ import type { McpClient } from '../../plugins/mcp-client.js'
 import type { ToolRegistry } from '../../tools/registry.js'
 import type { AgentRegistry } from '../../agents/registry.js'
 import type { CommandLoader } from '../../commands/loader.js'
+import type { TaskScheduler } from '../../scheduling/task-scheduler.js'
+import { listAvailableServers, getServerDefinition, toMcpConfig, getMissingEnvVars } from '../../config/mcp-registry.js'
 import StatusBar from './StatusBar.js'
 
 // We use chalk directly for coloring since Ink <Text> color props are limited
@@ -110,6 +112,7 @@ export interface InkAppProps {
   toolRegistry: ToolRegistry
   agentRegistry: AgentRegistry
   commandLoader: CommandLoader
+  taskScheduler: TaskScheduler
   ollamaUrl: string
   verbose: boolean
   doSave: () => Promise<void>
@@ -188,7 +191,7 @@ export default function App(props: InkAppProps): React.ReactElement {
   const {
     agent, session, permissionManager, adapter,
     orchestrator, costTracker, undoManager,
-    pluginManager, mcpClient, toolRegistry, agentRegistry, commandLoader, ollamaUrl, verbose,
+    pluginManager, mcpClient, toolRegistry, agentRegistry, commandLoader, taskScheduler, ollamaUrl, verbose,
     doSave, autoSaver,
   } = props
 
@@ -786,16 +789,24 @@ export default function App(props: InkAppProps): React.ReactElement {
     }
 
     if (result === '__TASKS_STATUS__') {
+      // Show orchestrator team tasks
       const status = orchestrator.getStatus()
-      if (!status) {
-        appendOutput(`  ${DIM('ℹ')} ${WHITE('No active team or tasks.')}`)
-      } else {
+      if (status?.tasks) {
         const s = status.tasks
-        if (s) {
-          appendOutput(`  ${DIM('ℹ')} ${WHITE(
-            `Tasks: ${GREEN(`${s.completed} done`)} · ${YELLOW(`${s.in_progress} running`)} · ${DIM(`${s.pending} pending`)} · ${s.failed > 0 ? RED(`${s.failed} failed`) : DIM('0 failed')}`,
-          )}`)
+        appendOutput(`  ${DIM('ℹ')} ${WHITE(
+          `Team: ${GREEN(`${s.completed} done`)} · ${YELLOW(`${s.in_progress} running`)} · ${DIM(`${s.pending} pending`)} · ${s.failed > 0 ? RED(`${s.failed} failed`) : DIM('0 failed')}`,
+        )}`)
+      }
+      // Show background scheduled tasks
+      const scheduled = taskScheduler.list()
+      if (scheduled.length > 0) {
+        appendOutput(`  ${PURPLE.bold('Scheduled Tasks')} ${DIM(`(${taskScheduler.activeCount} active)`)}`)
+        for (const t of scheduled) {
+          const statusColor = t.status === 'running' ? YELLOW : t.status === 'completed' ? GREEN : t.status === 'failed' ? RED : DIM
+          appendOutput(`  ${DIM('·')} ${WHITE(t.name)} ${statusColor(t.status)} ${DIM(`runs: ${t.runCount}`)}`)
         }
+      } else if (!status?.tasks) {
+        appendOutput(`  ${DIM('ℹ')} ${WHITE('No active team or scheduled tasks.')}`)
       }
       return false
     }
@@ -890,6 +901,40 @@ export default function App(props: InkAppProps): React.ReactElement {
           appendOutput(`  ${DIM('ℹ')} ${WHITE(`Disconnected from ${name}`)}`)
         } else {
           appendOutput(`\n  ${ERROR_SYM} ${RED.bold(`MCP server "${name}" not found`)}\n`)
+        }
+      } else if (action === 'list-available' || action === 'available') {
+        const servers = listAvailableServers()
+        appendLines(['', `  ${PURPLE.bold('Available MCP Servers')} ${DIM(`(${servers.length})`)}`, ''])
+        for (const s of servers) {
+          const missing = getMissingEnvVars(s)
+          const envNote = missing.length > 0 ? ` ${YELLOW(`needs: ${missing.join(', ')}`)}` : ` ${GREEN('ready')}`
+          appendOutput(`  ${GREEN('•')} ${WHITE(s.name.padEnd(20))} ${DIM(s.description)}${envNote}`)
+        }
+        appendLines(['', `  ${DIM('Add with: /mcp add <name>')}`, ''])
+      } else if (action === 'add') {
+        const name = sub[1]
+        if (!name) {
+          appendOutput(`  ${DIM('ℹ')} ${WHITE('Usage: /mcp add <name> — use /mcp list-available to see options')}`)
+        } else {
+          const def = getServerDefinition(name)
+          if (!def) {
+            appendOutput(`\n  ${ERROR_SYM} ${RED.bold(`Unknown server "${name}". Use /mcp list-available to see options.`)}\n`)
+          } else {
+            const missing = getMissingEnvVars(def)
+            if (missing.length > 0) {
+              appendOutput(`\n  ${ERROR_SYM} ${RED.bold(`Missing required env vars: ${missing.join(', ')}`)}\n  ${DIM(`Set them before connecting: export ${missing[0]}=...`)}\n`)
+            } else {
+              try {
+                const config = toMcpConfig(def)
+                const tools = await mcpClient.connect(config)
+                mcpClient.registerTools(toolRegistry)
+                appendOutput(`  ${SUCCESS_SYM} ${WHITE(`Connected to ${name}: ${tools.length} tools discovered`)}`)
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err)
+                appendOutput(`\n  ${ERROR_SYM} ${RED.bold(msg)}\n`)
+              }
+            }
+          }
         }
       }
       return false
