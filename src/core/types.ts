@@ -284,6 +284,7 @@ export interface CmdrConfig {
   defaultModel: string
   defaultProvider: 'ollama' | 'openai' | 'anthropic'
   maxConcurrency: number
+  maxTurns: number
   contextBudget: number
   autoCompact: boolean
   permissions: {

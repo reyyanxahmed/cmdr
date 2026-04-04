@@ -9,6 +9,7 @@ export const DEFAULT_CONFIG: CmdrConfig = {
   defaultModel: 'qwen2.5-coder:14b',
   defaultProvider: 'ollama',
   maxConcurrency: 2,
+  maxTurns: 30,
   contextBudget: 32768,
   autoCompact: true,
   permissions: {

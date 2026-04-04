@@ -32,6 +32,7 @@ function getEnvOverrides(): Record<string, unknown> {
   if (process.env.CMDR_OLLAMA_URL) overrides.ollamaUrl = process.env.CMDR_OLLAMA_URL
   if (process.env.CMDR_PROVIDER) overrides.defaultProvider = process.env.CMDR_PROVIDER
   if (process.env.CMDR_MAX_CONCURRENCY) overrides.maxConcurrency = parseInt(process.env.CMDR_MAX_CONCURRENCY, 10)
+  if (process.env.CMDR_MAX_TURNS) overrides.maxTurns = parseInt(process.env.CMDR_MAX_TURNS, 10)
   if (process.env.CMDR_CONTEXT_BUDGET) overrides.contextBudget = parseInt(process.env.CMDR_CONTEXT_BUDGET, 10)
   if (process.env.CMDR_TELEMETRY) overrides.telemetry = process.env.CMDR_TELEMETRY === 'true'
 
