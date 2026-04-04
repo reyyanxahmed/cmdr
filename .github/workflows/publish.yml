@@ -59,11 +59,15 @@ jobs:
         id: tag
         run: |
           TAG="v${{ steps.version.outputs.local }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "Release $TAG"
-          git push origin "$TAG"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — skipping tag creation"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+          fi
 
       - name: Create GitHub Release
         if: steps.version.outputs.changed == 'true'
@@ -73,12 +77,22 @@ jobs:
             const tag = '${{ steps.tag.outputs.tag }}';
             const version = '${{ steps.version.outputs.local }}';
             const npm = `https://www.npmjs.com/package/cmdr-agent/v/${version}`;
-            const { data: release } = await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: tag,
-              name: `cmdr ${tag}`,
-              generate_release_notes: true,
-              body_append: `\n\n---\n📦 [cmdr-agent@${version} on npm](${npm})`,
-            });
-            core.info(`Release created: ${release.html_url}`);
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tag,
+              });
+              core.info(`Release for ${tag} already exists — skipping`);
+            } catch (e) {
+              if (e.status !== 404) throw e;
+              const { data: release } = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tag,
+                name: `cmdr ${tag}`,
+                generate_release_notes: true,
+                body_append: `\n\n---\n📦 [cmdr-agent@${version} on npm](${npm})`,
+              });
+              core.info(`Release created: ${release.html_url}`);
+            }
