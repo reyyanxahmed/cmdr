@@ -193,16 +193,22 @@ export class OllamaAdapter implements LLMAdapter {
       body.think = false
     }
 
-    const res = await fetch(`${this.baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: options.abortSignal,
-    })
+    let res: Response
+    try {
+      res = await fetch(`${this.baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: options.abortSignal,
+      })
+    } catch (fetchErr) {
+      const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr)
+      throw new Error(`Ollama request failed: ${msg} (model=${options.model}, num_ctx=${contextLength})`)
+    }
 
     if (!res.ok) {
       const text = await res.text()
-      throw new Error(`Ollama /api/chat failed (${res.status}): ${text}`)
+      throw new Error(`Ollama API error (${res.status}): ${text.slice(0, 300)}`)
     }
 
     const data = await res.json() as OllamaChatResponse
@@ -267,16 +273,23 @@ export class OllamaAdapter implements LLMAdapter {
       body.think = false
     }
 
-    const res = await fetch(`${this.baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: options.abortSignal,
-    })
+    let res: Response
+    try {
+      res = await fetch(`${this.baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: options.abortSignal,
+      })
+    } catch (fetchErr) {
+      const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr)
+      yield { type: 'error', data: new Error(`Ollama request failed: ${msg} (model=${options.model}, num_ctx=${contextLength})`) }
+      return
+    }
 
     if (!res.ok) {
       const text = await res.text()
-      yield { type: 'error', data: new Error(`Ollama stream failed (${res.status}): ${text}`) }
+      yield { type: 'error', data: new Error(`Ollama API error (${res.status}): ${text.slice(0, 300)}`) }
       return
     }
 

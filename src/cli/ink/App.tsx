@@ -350,6 +350,19 @@ export default function App(props: InkAppProps): React.ReactElement {
       },
     }
 
+    // ── Pre-call compaction: prevent context overflow before hitting the LLM ──
+    session.syncFromAgent(agent.getHistory())
+    const contextLimit = getDefaultContextLength(currentModelRef.current)
+    if (session.tokenCount > contextLimit * 0.70) {
+      try {
+        const stats = await session.compact(adapter, currentModelRef.current)
+        agent.replaceMessages(session.messages)
+        appendOutput(`  ${DIM(`◇ pre-compacted: ${stats.before} → ${stats.after} messages (saved ~${stats.tokensSaved} tokens)`)}`)
+      } catch {
+        // best effort — will try emergency compaction on failure
+      }
+    }
+
     try {
       for await (const event of agent.stream(message, callbacks, abortController.signal)) {
         switch (event.type) {
@@ -368,10 +381,15 @@ export default function App(props: InkAppProps): React.ReactElement {
           case 'tool_use': {
             stopSpinnerFn()
             if (!firstText) {
-              // Flush accumulated text
+              // Flush accumulated text — strip raw tool_call/thought blocks
               if (fullOutput) {
-                const formatted = fullOutput.split('\n').map(l => `  ${PURPLE('│')} ${l}`).join('\n')
-                appendOutput(formatted)
+                let displayText = fullOutput
+                displayText = displayText.replace(/```tool_call[\s\S]*?```/g, '').trim()
+                displayText = displayText.replace(/```thought[\s\S]*?```/g, '').trim()
+                if (displayText) {
+                  const formatted = displayText.split('\n').map(l => `  ${PURPLE('│')} ${l}`).join('\n')
+                  appendOutput(formatted)
+                }
                 fullOutput = ''
               }
               firstText = true
@@ -437,7 +455,68 @@ export default function App(props: InkAppProps): React.ReactElement {
     } catch (err) {
       stopSpinnerFn()
       const msg = err instanceof Error ? err.message : String(err)
-      if (msg.includes('not found') || msg.includes('404') || (msg.includes('model') && msg.includes('pull'))) {
+      // ── Emergency compaction on context overflow ──
+      const isContextOverflow = msg.includes('context') || msg.includes('too long') ||
+        msg.includes('exceeds') || msg.includes('num_ctx') || msg.includes('out of memory')
+
+      if (isContextOverflow) {
+        appendOutput(`  ${YELLOW('⚠')} ${DIM('Context overflow detected — emergency compacting...')}`)
+        session.syncFromAgent(agent.getHistory())
+        session.emergencyCompact()
+        agent.replaceMessages(session.messages)
+        appendOutput(`  ${DIM('◇ emergency compacted — retrying...')}`)
+
+        // Retry once with compacted context
+        try {
+          startSpinner('thinking')
+          fullOutput = ''
+          firstText = true
+          for await (const event of agent.stream('', callbacks, abortController.signal)) {
+            switch (event.type) {
+              case 'text': {
+                if (firstText) { stopSpinnerFn(); firstText = false }
+                fullOutput += event.data as string
+                break
+              }
+              case 'tool_use': {
+                stopSpinnerFn()
+                const block = event.data as ToolUseBlock
+                currentTool = block.name
+                currentToolInput = block.input
+                toolCallCount++
+                const toolSummary = Object.entries(block.input)
+                  .map(([k, v]) => {
+                    const val = typeof v === 'string' ? v.slice(0, 80) : JSON.stringify(v).slice(0, 80)
+                    return `${DIM(k + ':')} ${WHITE(val)}`
+                  }).join(' ')
+                appendOutput(`  ${YELLOW('⟳')} ${CYAN.bold(block.name)} ${toolSummary}`)
+                startSpinner('tool', block.name)
+                break
+              }
+              case 'tool_result': {
+                stopSpinnerFn()
+                const block = event.data as ToolResultBlock
+                appendOutput(summarizeToolResult(currentTool, currentToolInput, block.content, block.is_error))
+                currentTool = ''
+                currentToolInput = {}
+                startSpinner('thinking')
+                firstText = true
+                break
+              }
+              case 'done': { stopSpinnerFn(); break }
+              case 'error': {
+                stopSpinnerFn()
+                appendOutput(`\n  ${ERROR_SYM} ${RED.bold((event.data as Error).message)}\n`)
+                break
+              }
+            }
+          }
+        } catch (retryErr) {
+          stopSpinnerFn()
+          const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr)
+          appendOutput(`\n  ${ERROR_SYM} ${RED.bold(`Retry after compaction failed: ${retryMsg}`)}\n`)
+        }
+      } else if (msg.includes('not found') || msg.includes('404') || (msg.includes('model') && msg.includes('pull'))) {
         appendOutput(`\n  ${ERROR_SYM} ${RED.bold(
           `Model '${currentModelRef.current}' not found. Run ${GREEN('/models')} to see available models or ${GREEN('/model <name>')} to switch.`,
         )}\n`)
@@ -446,10 +525,15 @@ export default function App(props: InkAppProps): React.ReactElement {
       }
     }
 
-    // Flush remaining text
+    // Flush remaining text — strip raw tool_call/thought blocks from display
     if (fullOutput) {
-      const formatted = fullOutput.split('\n').map(l => `  ${PURPLE('│')} ${l}`).join('\n')
-      appendOutput(formatted)
+      let displayText = fullOutput
+      displayText = displayText.replace(/```tool_call[\s\S]*?```/g, '').trim()
+      displayText = displayText.replace(/```thought[\s\S]*?```/g, '').trim()
+      if (displayText) {
+        const formatted = displayText.split('\n').map(l => `  ${PURPLE('│')} ${l}`).join('\n')
+        appendOutput(formatted)
+      }
     }
 
     if (fullOutput || !firstText) {
@@ -558,6 +642,11 @@ export default function App(props: InkAppProps): React.ReactElement {
         currentModelRef.current = model
         agent.setModel(model)
         session.updateContextLength(getDefaultContextLength(model))
+        // Reset token counters for the new model
+        costTracker.reset()
+        setTokensIn(0)
+        setTokensOut(0)
+        setTurnCount(0)
       },
       clearHistory: () => {
         session.clear()

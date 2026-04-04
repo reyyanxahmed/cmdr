@@ -127,6 +127,40 @@ export class SessionManager {
     this.consecutiveCompactFailures = 0
   }
 
+  /**
+   * Emergency compaction — keeps only last 4 exchanges + a short fallback summary.
+   * Used when a context overflow error occurs and normal compaction is too slow.
+   */
+  emergencyCompact(): void {
+    const apiMessages = this.getApiMessages()
+    const keepCount = 8 // 4 user + 4 assistant
+    if (apiMessages.length <= keepCount) return
+
+    // Flag all but the last keepCount messages as transcript-only
+    const cutoff = this.session.messages.length - keepCount
+    for (let i = 0; i < this.session.messages.length; i++) {
+      const msg = this.session.messages[i]
+      if (i < cutoff && !msg.isVisibleInTranscriptOnly && !msg.isMeta) {
+        msg.isVisibleInTranscriptOnly = true
+      }
+    }
+
+    // Insert a boundary marker
+    this.session.messages.splice(cutoff, 0, {
+      role: 'user',
+      content: [{ type: 'text', text: '[Emergency compaction: older context was dropped to fit within model context window]' }],
+      isCompactBoundary: true,
+    })
+
+    this.session.tokenCount = countMessageTokens(this.getApiMessages() as any)
+    this.consecutiveCompactFailures = 0
+  }
+
+  /** Reset token counters (e.g. when switching models). */
+  resetTokenCounters(): void {
+    this.session.tokenCount = countMessageTokens(this.getApiMessages() as any)
+  }
+
   /** Update the max context tokens (e.g. after switching models). */
   updateContextLength(maxContextTokens: number): void {
     this.session.maxContextTokens = maxContextTokens

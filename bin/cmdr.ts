@@ -14,7 +14,7 @@ import { OllamaAdapter } from '../src/llm/ollama.js'
 import { checkForUpdate } from '../src/cli/update-checker.js'
 import * as readline from 'readline'
 
-const VERSION = '2.0.0'
+const VERSION = '2.0.1'
 
 /** Prompt user to pick a model from the list. */
 function promptModelSelection(models: string[]): Promise<string> {
