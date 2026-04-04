@@ -39,6 +39,7 @@ export class SessionManager {
 
   get id(): string { return this.session.id }
   get tokenCount(): number { return this.session.tokenCount }
+  get maxContextTokens(): number { return this.session.maxContextTokens }
   get projectContext(): ProjectContext { return this.session.projectContext }
 
   /** All messages including transcript-only (full history). */
