@@ -114,6 +114,8 @@ export interface InkAppProps {
   verbose: boolean
   doSave: () => Promise<void>
   autoSaver: DebouncedSaver
+  version?: string
+  gitBranch?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -1121,6 +1123,9 @@ export default function App(props: InkAppProps): React.ReactElement {
             agentCount={agentRegistry.list().length}
             permissionMode={permissionManager.getMode()}
             cwd={process.cwd()}
+            gitBranch={props.gitBranch}
+            contextPct={session.maxContextTokens ? Math.round((session.tokenCount / session.maxContextTokens) * 100) : 0}
+            version={props.version}
           />
           <Box>
             <Text>{GREEN.bold('❯')} </Text>
@@ -1128,6 +1133,7 @@ export default function App(props: InkAppProps): React.ReactElement {
               value={inputValue}
               onChange={setInputValue}
               onSubmit={handleSubmit}
+              placeholder="Ask anything, @file to include, /help for commands"
             />
           </Box>
         </Box>

@@ -28,6 +28,7 @@ import {
   GREEN, PURPLE, DIM, WHITE,
   renderInfo, YELLOW, RED,
 } from './theme.js'
+import type { WelcomeOptions } from './theme.js'
 import { PermissionManager } from '../core/permissions.js'
 import { saveSession, loadSession, findRecentSession, DebouncedSaver } from '../session/session-persistence.js'
 import { PluginManager } from '../plugins/plugin-manager.js'
@@ -37,6 +38,7 @@ import { AgentRegistry, AgentExecutor, createSubagentTool } from '../agents/inde
 import { CommandLoader } from '../commands/index.js'
 import { CostTracker } from '../session/cost-tracker.js'
 import { UndoManager } from '../session/undo-manager.js'
+import { execSync } from 'node:child_process'
 import { startThinking, stopSpinner, spinnerSuccess, spinnerFail, getCompletionSummary, startToolExec } from './spinner.js'
 import type { RunCallbacks } from '../core/agent-runner.js'
 import App from './ink/App.js'
@@ -200,22 +202,33 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   )
 
   // --- Welcome banner (prints to normal terminal before Ink takes over) ---
-  const modeLabel = permissionManager.getMode() === 'yolo'
-    ? YELLOW('⚠ yolo (all tools auto-approved)')
-    : permissionManager.getMode() === 'strict'
-    ? RED('strict (all tools require approval)')
-    : GREEN('normal (write tools require approval)')
-  console.log(renderWelcome(currentModel, projectInfo, options.version))
-  console.log(`  ${DIM('Permissions:')} ${modeLabel}`)
+  let gitBranch: string | undefined
+  try {
+    gitBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd, stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim()
+  } catch { /* not a git repo */ }
+
+  const cmdrMdLines = projectContext.cmdrInstructions
+    ? projectContext.cmdrInstructions.split('\n').length : 0
+  const mcpServerCount = config.mcp?.servers?.length || 0
+
+  const welcomeOpts: WelcomeOptions = {
+    model: currentModel,
+    projectInfo,
+    version: options.version,
+    gitBranch,
+    permissionMode: permissionManager.getMode(),
+    cmdrMdLines,
+    agentCount,
+    customCmdCount,
+    pluginCount: pluginManager.list?.().length || 0,
+    mcpServerCount,
+    cwd,
+  }
+  console.log(renderWelcome(currentModel, projectInfo, options.version, welcomeOpts))
 
   if (activeTeamConfig) {
     const teamAgents = activeTeamConfig.agents.map(a => a.name).join(', ')
     console.log(`  ${DIM('Team:')} ${PURPLE(activeTeamConfig.name)} ${DIM(`(${teamAgents})`)}`)
-  }
-
-  if (projectContext.cmdrInstructions) {
-    const lineCount = projectContext.cmdrInstructions.split('\n').length
-    console.log(`  ${DIM(`CMDR.md loaded (${lineCount} lines)`)}`)
   }
 
   // --- Resume session if requested ---
@@ -278,6 +291,8 @@ export async function startRepl(options: ReplOptions): Promise<void> {
       verbose,
       doSave,
       autoSaver,
+      version: options.version,
+      gitBranch,
     }),
     {
       exitOnCtrlC: false,   // We handle Ctrl+C ourselves

@@ -137,17 +137,136 @@ ${GREEN_DIM('   ╚═════╝╚═╝     ╚═╝╚═════�
   return art
 }
 
-export function renderWelcome(model: string, projectInfo: string, version = '0.0.0'): string {
-  const lines = [
-    renderBanner(),
-    `  ${PURPLE.bold('cmdr')} ${DIM(`v${version}`)} ${DIM('—')} ${WHITE('local-first multi-agent coding tool')}`,
-    `  ${DIM('Model:')} ${GREEN(model)}  ${DIM('Project:')} ${CYAN(projectInfo)}`,
+// ---------------------------------------------------------------------------
+// Advanced two-panel welcome screen
+// ---------------------------------------------------------------------------
+
+export interface WelcomeOptions {
+  model: string
+  projectInfo: string
+  version?: string
+  gitBranch?: string
+  permissionMode?: string
+  cmdrMdLines?: number
+  agentCount?: number
+  customCmdCount?: number
+  pluginCount?: number
+  mcpServerCount?: number
+  resumedSession?: string
+  cwd?: string
+}
+
+function pad(str: string, len: number): string {
+  const stripped = str.replace(/\x1b\[[0-9;]*m/g, '')
+  const padding = Math.max(0, len - stripped.length)
+  return str + ' '.repeat(padding)
+}
+
+export function renderWelcome(model: string, projectInfo: string, version = '0.0.0', opts?: WelcomeOptions): string {
+  const termWidth = Math.min(process.stdout.columns || 100, 120)
+  const innerWidth = termWidth - 4
+  const dividerCol = Math.floor(innerWidth * 0.46)
+  const leftCol = dividerCol - 1
+  const rightCol = innerWidth - dividerCol - 2
+
+  const B = {
+    tl: GREEN_DIM('╭'), tr: GREEN_DIM('╮'), bl: GREEN_DIM('╰'), br: GREEN_DIM('╯'),
+    h: GREEN_DIM('─'), v: GREEN_DIM('│'), cross: GREEN_DIM('┬'), bcross: GREEN_DIM('┴'),
+  }
+
+  const topBorder = `${B.tl}${B.h.repeat(dividerCol)}${B.cross}${B.h.repeat(innerWidth - dividerCol - 1)}${B.tr}`
+
+  // ─── Left panel ───
+  const leftLines: string[] = [
     '',
-    `  ${DIM('Type a message to start coding. Use')} ${commandText('/help')} ${DIM('for commands.')}`,
-    SEPARATOR,
+    `  ${PURPLE.bold('cmdr')} ${DIM(`v${version}`)}`,
+    `  ${DIM('─'.repeat(Math.min(leftCol - 4, 22)))}`,
+    '',
+    `  ${DIM('Model:')}    ${GREEN(model)}`,
+    `  ${DIM('Project:')}  ${CYAN(projectInfo)}`,
+  ]
+
+  if (opts?.gitBranch) {
+    leftLines.push(`  ${DIM('Branch:')}   ${PURPLE(opts.gitBranch)}`)
+  }
+
+  const dir = (opts?.cwd || process.cwd()).replace(/^\/Users\/\w+/, '~')
+  leftLines.push(`  ${DIM('Dir:')}      ${WHITE(dir.length > leftCol - 14 ? '…' + dir.slice(-(leftCol - 15)) : dir)}`)
+
+  if (opts?.permissionMode) {
+    const modeColor = opts.permissionMode === 'yolo' ? YELLOW
+      : opts.permissionMode === 'strict' ? RED : GREEN
+    leftLines.push(`  ${DIM('Mode:')}     ${modeColor(opts.permissionMode)}`)
+  }
+
+  leftLines.push('')
+
+  // ─── Right panel ───
+  const rightLines: string[] = [
+    '',
+    `  ${GREEN.bold('Getting started')}`,
+    `  ${DIM('─'.repeat(Math.min(rightCol - 4, 22)))}`,
+    '',
+    `  ${WHITE('1.')} ${DIM('Ask coding questions or edit code')}`,
+    `  ${WHITE('2.')} ${commandText('/help')} ${DIM('for all commands')}`,
+    `  ${WHITE('3.')} ${DIM('@agent <task> to delegate')}`,
     '',
   ]
-  return lines.join('\n')
+
+  // Context indicators
+  const contextItems: string[] = []
+  if (opts?.cmdrMdLines && opts.cmdrMdLines > 0) {
+    contextItems.push(`${GREEN('●')} ${WHITE(`${opts.cmdrMdLines}`)} ${DIM('CMDR.md lines')}`)
+  }
+  if (opts?.agentCount && opts.agentCount > 0) {
+    contextItems.push(`${PURPLE('●')} ${WHITE(`${opts.agentCount}`)} ${DIM(opts.agentCount === 1 ? 'agent loaded' : 'agents loaded')}`)
+  }
+  if (opts?.customCmdCount && opts.customCmdCount > 0) {
+    contextItems.push(`${CYAN('●')} ${WHITE(`${opts.customCmdCount}`)} ${DIM('custom commands')}`)
+  }
+  if (opts?.pluginCount && opts.pluginCount > 0) {
+    contextItems.push(`${YELLOW('●')} ${WHITE(`${opts.pluginCount}`)} ${DIM(opts.pluginCount === 1 ? 'plugin' : 'plugins')}`)
+  }
+  if (opts?.mcpServerCount && opts.mcpServerCount > 0) {
+    contextItems.push(`${CYAN('●')} ${WHITE(`${opts.mcpServerCount}`)} ${DIM('MCP servers')}`)
+  }
+
+  if (contextItems.length > 0) {
+    rightLines.push(`  ${DIM('Loaded:')}`)
+    for (const item of contextItems) {
+      rightLines.push(`    ${item}`)
+    }
+  } else {
+    rightLines.push(`  ${DIM('No project context loaded.')}`)
+    rightLines.push(`  ${DIM('Add a CMDR.md for custom instructions.')}`)
+  }
+  rightLines.push('')
+
+  // Equalize rows
+  const maxRows = Math.max(leftLines.length, rightLines.length)
+  while (leftLines.length < maxRows) leftLines.push('')
+  while (rightLines.length < maxRows) rightLines.push('')
+
+  const bodyRows = leftLines.map((left, i) => {
+    const right = rightLines[i] || ''
+    return `${B.v}${pad(left, leftCol)}${B.v}${pad(right, rightCol)}${B.v}`
+  })
+
+  const bottomBorder = `${B.bl}${B.h.repeat(dividerCol)}${B.bcross}${B.h.repeat(innerWidth - dividerCol - 1)}${B.br}`
+
+  // Hint bar below
+  const hintLeft = `  ${DIM('Shift+Tab to accept edits')}`
+  const hintRight = `${DIM('? for shortcuts')}`
+  const hintGap = Math.max(1, termWidth - 28 - 16 - 2)
+  const hintLine = `${hintLeft}${' '.repeat(hintGap)}${hintRight}`
+
+  return [
+    '',
+    topBorder,
+    ...bodyRows,
+    bottomBorder,
+    hintLine,
+  ].join('\n')
 }
 
 export function renderToolExec(toolName: string, input: Record<string, unknown>): string {
