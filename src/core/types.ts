@@ -304,8 +304,19 @@ export interface CmdrConfig {
 
 export interface McpServerConfig {
   name: string
-  url: string
+  /** URL for HTTP/SSE transports. */
+  url?: string
   apiKey?: string
+  /** Transport type: 'http' (default), 'stdio', or 'sse'. Auto-detected if omitted. */
+  transport?: 'http' | 'stdio' | 'sse'
+  /** Command to spawn for stdio transport. */
+  command?: string
+  /** Arguments for the stdio command. */
+  args?: string[]
+  /** Environment variables for the stdio process. */
+  env?: Record<string, string>
+  /** Working directory for the stdio process. */
+  cwd?: string
 }
 
 // ---------------------------------------------------------------------------

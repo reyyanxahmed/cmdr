@@ -6,6 +6,7 @@
  */
 
 import type { ProjectContext } from '../core/types.js'
+import { PromptCache, type CacheStats } from './prompt-cache.js'
 
 /* ── Module interface ──────────────────────────────────────────────── */
 
@@ -32,6 +33,7 @@ export const PROMPT_PRIORITIES = {
 
 export class PromptBuilder {
   private modules = new Map<string, PromptModule>()
+  private readonly cache = new PromptCache()
 
   addModule(mod: PromptModule): void {
     this.modules.set(mod.id, mod)
@@ -49,8 +51,14 @@ export class PromptBuilder {
   }
 
   build(): string {
-    return [...this.modules.values()]
+    const sorted = [...this.modules.values()]
       .sort((a, b) => a.priority - b.priority)
+
+    // Track static prefix for KV cache hit detection
+    const staticPrefix = sorted.filter(m => m.isStatic).map(m => m.content).filter(c => c.length > 0).join('\n\n')
+    this.cache.checkPrefix(staticPrefix)
+
+    return sorted
       .map(m => m.content)
       .filter(c => c.length > 0)
       .join('\n\n')
@@ -64,6 +72,11 @@ export class PromptBuilder {
       .map(m => m.content)
       .filter(c => c.length > 0)
       .join('\n\n')
+  }
+
+  /** Get prompt cache hit/miss statistics. */
+  getCacheStats(): CacheStats {
+    return this.cache.getStats()
   }
 }
 

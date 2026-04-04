@@ -1,12 +1,15 @@
 /**
  * Orchestrator — top-level coordinator for multi-agent workflows.
  *
- * Provides runAgent(), runTeam(), and runTasks() entry points.
+ * Provides runAgent(), runTeam(), runTasks(), and coordinate() entry points.
+ * The coordinate() method adds a planning phase where an LLM decomposes a
+ * complex goal into tasks with dependencies before executing them.
  */
 
 import type {
   AgentConfig, AgentRunResult, TeamConfig, TeamRunResult,
   Task, LLMAdapter, OrchestratorConfig, OrchestratorEvent, TokenUsage,
+  LLMMessage, LLMChatOptions, TextBlock,
 } from './types.js'
 import type { ToolRegistry } from '../tools/registry.js'
 import type { PermissionManager } from './permissions.js'
@@ -16,6 +19,31 @@ import { TaskQueue } from '../communication/task-queue.js'
 import { Semaphore } from '../scheduling/semaphore.js'
 
 const ZERO_USAGE: TokenUsage = { input_tokens: 0, output_tokens: 0 }
+
+const COORDINATOR_SYSTEM_PROMPT = `You are a task decomposition coordinator. Given a complex goal and a list of available agents, break the goal into concrete tasks.
+
+Output a JSON array of tasks. Each task has:
+- "id": unique short string (e.g. "t1", "t2")
+- "title": brief task description (1 line)
+- "description": detailed instructions for the agent
+- "assignee": name of the agent best suited for this task
+- "dependsOn": array of task IDs that must complete first (or empty array)
+
+Rules:
+- Minimize dependencies — parallelize when possible
+- Each task should be self-contained enough for one agent to handle
+- Assign tasks to agents based on their roles/specializations
+- Keep the total number of tasks reasonable (2-8)
+
+Output ONLY the JSON array, no other text.`
+
+export interface CoordinateResult {
+  success: boolean
+  taskResults: Map<string, AgentRunResult>
+  totalTokenUsage: TokenUsage
+  plannedTasks: number
+  completedTasks: number
+}
 
 export class Orchestrator {
   private readonly adapter: LLMAdapter
@@ -141,6 +169,100 @@ export class Orchestrator {
   /** Get the active team (if any). */
   getActiveTeam(): Team | undefined {
     return this.activeTeam
+  }
+
+  /**
+   * Coordinator mode: LLM-driven task decomposition + parallel execution.
+   * Uses the adapter to plan tasks, then executes them via runTasks().
+   */
+  async coordinate(
+    goal: string,
+    agentConfigs: readonly AgentConfig[],
+    options?: { maxTokenBudget?: number },
+  ): Promise<CoordinateResult> {
+    this.emit({ type: 'message', data: 'Coordinator: planning tasks...' })
+
+    // Step 1: Plan — ask LLM to decompose the goal into tasks
+    const agentList = agentConfigs.map(a => `- ${a.name}: ${a.systemPrompt?.slice(0, 100) ?? 'general assistant'}`).join('\n')
+    const planMessages: LLMMessage[] = [{
+      role: 'user',
+      content: [{
+        type: 'text',
+        text: `Available agents:\n${agentList}\n\nGoal: ${goal}`,
+      }],
+    }]
+
+    const planOptions: LLMChatOptions = {
+      model: this.config.defaultModel ?? agentConfigs[0]?.model ?? 'qwen3',
+      systemPrompt: COORDINATOR_SYSTEM_PROMPT,
+      maxTokens: 1024,
+      temperature: 0.3,
+    }
+
+    let tasks: Task[]
+    let planUsage: TokenUsage = ZERO_USAGE
+
+    try {
+      const response = await this.adapter.chat(planMessages, planOptions)
+      planUsage = response.usage
+      const text = response.content
+        .filter((b): b is TextBlock => b.type === 'text')
+        .map(b => b.text)
+        .join('')
+
+      // Parse JSON from response (handle markdown code blocks)
+      const jsonMatch = text.match(/\[[\s\S]*\]/)
+      if (!jsonMatch) throw new Error('No JSON array in planner response')
+
+      const parsed = JSON.parse(jsonMatch[0]) as Array<{
+        id: string; title: string; description: string;
+        assignee?: string; dependsOn?: string[]
+      }>
+
+      tasks = parsed.map(t => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        status: 'pending' as const,
+        assignee: t.assignee,
+        dependsOn: t.dependsOn,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }))
+
+      this.emit({ type: 'message', data: `Coordinator: planned ${tasks.length} tasks` })
+    } catch (err) {
+      // Fallback: single task assigned to first agent
+      tasks = [{
+        id: 't1',
+        title: goal.slice(0, 80),
+        description: goal,
+        status: 'pending' as const,
+        assignee: agentConfigs[0]?.name,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }]
+      this.emit({ type: 'message', data: 'Coordinator: plan failed, using single-task fallback' })
+    }
+
+    // Step 2: Execute
+    const { results: taskResults, totalUsage: execUsage } = await this.runTasks(tasks, agentConfigs)
+
+    const totalUsage = addUsage(planUsage, execUsage)
+    const completed = Array.from(taskResults.values()).filter(r => r.success).length
+
+    // Check token budget
+    if (options?.maxTokenBudget && (totalUsage.input_tokens + totalUsage.output_tokens) > options.maxTokenBudget) {
+      this.emit({ type: 'message', data: 'Coordinator: token budget exceeded' })
+    }
+
+    return {
+      success: completed === tasks.length,
+      taskResults,
+      totalTokenUsage: totalUsage,
+      plannedTasks: tasks.length,
+      completedTasks: completed,
+    }
   }
 
   /** Get status of the active team. */
