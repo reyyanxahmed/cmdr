@@ -95,14 +95,14 @@ export class Agent {
   }
 
   /** Streaming prompt — yields events in real time. */
-  async *stream(message: string, callbacks?: RunCallbacks): AsyncGenerator<StreamEvent> {
+  async *stream(message: string, callbacks?: RunCallbacks, abortSignal?: AbortSignal): AsyncGenerator<StreamEvent> {
     this.state.messages.push({
       role: 'user',
       content: [{ type: 'text', text: message }],
     })
 
     this.state.status = 'running'
-    const runner = this.createRunner()
+    const runner = this.createRunner(abortSignal)
 
     try {
       for await (const event of runner.stream(this.state.messages, callbacks)) {
@@ -150,7 +150,7 @@ export class Agent {
     (this.config as { model?: string }).model = model
   }
 
-  private createRunner(): AgentRunner {
+  private createRunner(abortSignal?: AbortSignal): AgentRunner {
     return new AgentRunner(this.adapter, this.toolRegistry, this.toolExecutor, {
       model: this.config.model ?? 'qwen2.5-coder:14b',
       systemPrompt: this.config.systemPrompt,
@@ -161,6 +161,7 @@ export class Agent {
       agentName: this.config.name,
       agentRole: 'assistant',
       cwd: this.cwd,
+      abortSignal,
     }, this.permissionManager)
   }
 
