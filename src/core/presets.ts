@@ -49,6 +49,7 @@ When a task involves multiple files:
 - EXPLORE a codebase: glob for structure, grep for patterns, file_read for details.
 - RUN commands: use bash. Always check exit code. If it fails, analyze the error output and fix.
 - SEARCH for code: use grep with a focused pattern. Do not read entire files when grep can find what you need.
+- GRAPH CONTEXT: If a [Graph Context] block is provided in the conversation, use it directly for understanding code structure and impact. Only call graph_impact/graph_query/graph_review tools when you need deeper analysis beyond what the context already shows.
 
 # Project Instructions
 
@@ -64,6 +65,7 @@ If a CMDR.md file exists in the project root, follow its instructions. It contai
     'bash', 'file_read', 'file_write', 'file_edit',
     'grep', 'glob', 'git_diff', 'git_log', 'think',
     'memory_read', 'memory_write',
+    'graph_impact', 'graph_query', 'graph_review',
   ],
   maxTurns: 30,
 }
@@ -89,8 +91,10 @@ const REVIEWER_AGENT: AgentConfig = {
 - Performance issues (N+1 queries, unnecessary allocations)
 - Missing error handling
 - Test coverage gaps
-Be specific: cite line numbers, suggest concrete fixes. Read all changed files before reviewing.`,
-  tools: ['file_read', 'grep', 'glob', 'git_diff', 'think'],
+Be specific: cite line numbers, suggest concrete fixes.
+Prefer graph_review for impact-aware reviews over manually reading all files.
+Use graph_impact to understand the blast radius of changes before reviewing.`,
+  tools: ['file_read', 'grep', 'glob', 'git_diff', 'think', 'graph_impact', 'graph_query', 'graph_review'],
   maxTurns: 10,
 }
 

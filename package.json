@@ -1,6 +1,6 @@
 {
   "name": "cmdr-agent",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Open-source multi-agent coding tool for your terminal. Powered by Ollama.",
   "type": "module",
   "bin": {
