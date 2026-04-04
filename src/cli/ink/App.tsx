@@ -193,6 +193,8 @@ export default function App(props: InkAppProps): React.ReactElement {
   const [spinnerText, setSpinnerText] = useState('')
   const [approval, setApproval] = useState<ApprovalRequest | null>(null)
   const [approvalInput, setApprovalInput] = useState('')
+  const approvalQueueRef = useRef<ApprovalRequest[]>([])
+  const abortRef = useRef<AbortController | null>(null)
 
   const currentModelRef = useRef(props.model)
   const activeTeamRef = useRef(props.activeTeamConfig)
@@ -320,18 +322,27 @@ export default function App(props: InkAppProps): React.ReactElement {
     let currentToolInput: Record<string, unknown> = {}
     let toolCallCount = 0
 
+    const abortController = new AbortController()
+    abortRef.current = abortController
+
     const callbacks: RunCallbacks = {
       onToolApproval: (toolName, input, riskLevel) => {
         return new Promise<ApprovalDecision>((resolve) => {
           stopSpinnerFn()
-          setApproval({ toolName, input, riskLevel, resolve })
-          setState('waiting_approval')
+          const request: ApprovalRequest = { toolName, input, riskLevel, resolve }
+          // If we're already showing an approval prompt, queue this one
+          if (stateRef.current === 'waiting_approval') {
+            approvalQueueRef.current.push(request)
+          } else {
+            setApproval(request)
+            setState('waiting_approval')
+          }
         })
       },
     }
 
     try {
-      for await (const event of agent.stream(message, callbacks)) {
+      for await (const event of agent.stream(message, callbacks, abortController.signal)) {
         switch (event.type) {
           case 'text': {
             if (firstText) {
@@ -793,7 +804,21 @@ export default function App(props: InkAppProps): React.ReactElement {
       }
       lastSigintRef.current = now
 
-      if (stateRef.current === 'processing') {
+      if (stateRef.current === 'processing' || stateRef.current === 'waiting_approval') {
+        // Abort the current agent turn
+        if (abortRef.current) {
+          abortRef.current.abort()
+          abortRef.current = null
+        }
+        // Drain any pending approval queue
+        for (const pending of approvalQueueRef.current) {
+          pending.resolve('deny')
+        }
+        approvalQueueRef.current = []
+        if (approval) {
+          approval.resolve('deny')
+          setApproval(null)
+        }
         appendOutput(`\n  ${DIM('Interrupt — press Ctrl+C again to exit.')}`)
       } else if (stateRef.current === 'idle') {
         appendOutput(`  ${DIM('Press Ctrl+C again to exit.')}`)
@@ -827,7 +852,16 @@ export default function App(props: InkAppProps): React.ReactElement {
 
     const resolve = approval.resolve
     setApproval(null)
-    setState('processing')
+
+    // Show next queued approval, or return to processing
+    const next = approvalQueueRef.current.shift()
+    if (next) {
+      setApproval(next)
+      // Stay in waiting_approval state
+    } else {
+      setState('processing')
+    }
+
     resolve(decision)
   }, [approval])
 
