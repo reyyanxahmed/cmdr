@@ -63,6 +63,7 @@ If a CMDR.md file exists in the project root, follow its instructions. It contai
   tools: [
     'bash', 'file_read', 'file_write', 'file_edit',
     'grep', 'glob', 'git_diff', 'git_log', 'think',
+    'memory_read', 'memory_write',
   ],
   maxTurns: 30,
 }

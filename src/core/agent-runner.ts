@@ -13,6 +13,7 @@ import type { ToolRegistry } from '../tools/registry.js'
 import type { ToolExecutor } from '../tools/executor.js'
 import type { PermissionManager } from './permissions.js'
 import { classifyIntent, filterToolsByIntent, detectFrustration, FRUSTRATION_NUDGE } from './intent.js'
+import { ContentReplacer } from './content-replacement.js'
 
 // ---------------------------------------------------------------------------
 // Safe parallel tools — read-only tools that can safely run concurrently
@@ -26,6 +27,7 @@ const SAFE_PARALLEL_TOOLS = new Set([
   'git_diff',
   'git_log',
   'think',
+  'memory_read',
 ])
 
 // ---------------------------------------------------------------------------
@@ -43,6 +45,10 @@ export interface RunnerOptions {
   readonly agentName?: string
   readonly agentRole?: string
   readonly cwd?: string
+  /** Override thinking mode: true = force think, false = disable thinking. */
+  readonly thinkingEnabled?: boolean
+  /** Metadata passed to tool execute context (e.g. memoryManager). */
+  readonly metadata?: Readonly<Record<string, unknown>>
 }
 
 export interface RunCallbacks {
@@ -92,6 +98,7 @@ const ZERO_USAGE: TokenUsage = { input_tokens: 0, output_tokens: 0 }
 
 export class AgentRunner {
   private readonly maxTurns: number
+  private readonly contentReplacer: ContentReplacer
 
   constructor(
     private readonly adapter: LLMAdapter,
@@ -101,6 +108,7 @@ export class AgentRunner {
     private readonly permissionManager?: PermissionManager,
   ) {
     this.maxTurns = options.maxTurns ?? 10
+    this.contentReplacer = new ContentReplacer()
   }
 
   /** Run a complete conversation, collecting all stream events internally. */
@@ -184,6 +192,7 @@ export class AgentRunner {
           temperature: this.options.temperature,
           systemPrompt: this.options.systemPrompt,
           abortSignal: this.options.abortSignal,
+          thinkingEnabled: this.options.thinkingEnabled,
         }
 
         // Step 1: Stream from LLM — yield text tokens in real-time
@@ -245,6 +254,7 @@ export class AgentRunner {
           },
           cwd: this.options.cwd,
           abortSignal: this.options.abortSignal,
+          metadata: this.options.metadata,
         }
 
         const allSafe = pendingToolUse.every(tc => SAFE_PARALLEL_TOOLS.has(tc.name))
@@ -293,17 +303,22 @@ export class AgentRunner {
           const duration = Date.now() - startTime
           callbacks.onToolResult?.(block.name, result)
 
+          // Truncate large outputs to prevent context overflow
+          const truncatedData = result.isError
+            ? result.data
+            : this.contentReplacer.truncateIfNeeded(result.data, block.name, block.id)
+
           const record: ToolCallRecord = {
             toolName: block.name,
             input: block.input,
-            output: result.data,
+            output: truncatedData,
             duration,
           }
 
           const resultBlock: ToolResultBlock = {
             type: 'tool_result',
             tool_use_id: block.id,
-            content: result.data,
+            content: truncatedData,
             is_error: result.isError,
           }
 

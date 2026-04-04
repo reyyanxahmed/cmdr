@@ -73,6 +73,8 @@ export interface PromptBuildOptions {
   basePrompt: string
   projectContext: ProjectContext
   model: string
+  /** Persistent memory content (from MemoryManager). */
+  memoryPrompt?: string
 }
 
 export function buildSystemPrompt(options: PromptBuildOptions): string {
@@ -138,6 +140,16 @@ export function buildSystemPrompt(options: PromptBuildOptions): string {
       content: `Runtime:\n${runtimeParts.join('\n')}`,
       priority: PROMPT_PRIORITIES.RUNTIME_CONTEXT,
       isStatic: false,
+    })
+  }
+
+  // 25: Persistent memory — cross-session learned context (STATIC per session)
+  if (options.memoryPrompt) {
+    builder.addModule({
+      id: 'memory',
+      content: `<persistent_memory>\nThese are your saved notes from previous sessions. Use them to inform your work. Update memory with memory_write when you learn something new about this project.\n\n${options.memoryPrompt}\n</persistent_memory>`,
+      priority: 25,  // After role, before project instructions
+      isStatic: true,
     })
   }
 

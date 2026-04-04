@@ -188,8 +188,12 @@ export class OllamaAdapter implements LLMAdapter {
       body.tools = options.tools.map(t => this.convertToolDef(t))
     }
 
-    // Disable thinking mode for models that eat output with it
-    if (config.thinkingMode === 'disabled') {
+    // Thinking mode: user override > model family default
+    if (options.thinkingEnabled === false) {
+      body.think = false
+    } else if (options.thinkingEnabled === true) {
+      body.think = true
+    } else if (config.thinkingMode === 'disabled') {
       body.think = false
     }
 
@@ -268,8 +272,12 @@ export class OllamaAdapter implements LLMAdapter {
       body.tools = options.tools.map(t => this.convertToolDef(t))
     }
 
-    // Disable thinking mode for models that eat output with it
-    if (config.thinkingMode === 'disabled') {
+    // Thinking mode: user override > model family default
+    if (options.thinkingEnabled === false) {
+      body.think = false
+    } else if (options.thinkingEnabled === true) {
+      body.think = true
+    } else if (config.thinkingMode === 'disabled') {
       body.think = false
     }
 

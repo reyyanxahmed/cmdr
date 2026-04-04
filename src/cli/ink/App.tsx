@@ -655,6 +655,19 @@ export default function App(props: InkAppProps): React.ReactElement {
         agent.reset()
         permissionManager.resetSession()
       },
+      setThinkingMode: (mode: 'on' | 'off' | 'auto') => {
+        const cfg = agent.config as unknown as { thinkingEnabled?: boolean; temperature?: number }
+        if (mode === 'on') {
+          cfg.thinkingEnabled = true
+          cfg.temperature = undefined
+        } else if (mode === 'off') {
+          cfg.thinkingEnabled = false
+          cfg.temperature = 0.2
+        } else {
+          cfg.thinkingEnabled = undefined
+          cfg.temperature = undefined
+        }
+      },
       ollamaUrl,
       adapter,
       model: currentModelRef.current,

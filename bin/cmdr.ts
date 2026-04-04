@@ -103,6 +103,7 @@ async function main(): Promise<void> {
     await startRepl({
       model,
       ollamaUrl,
+      provider: args.provider,
       version: VERSION,
       initialPrompt: args.prompt,
       dangerouslySkipPermissions: args.dangerouslySkipPermissions,
@@ -112,6 +113,9 @@ async function main(): Promise<void> {
       team: args.team,
       maxTurns: args.maxTurns,
       outputFormat: args.outputFormat,
+      think: args.think,
+      noThink: args.noThink,
+      fast: args.fast,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

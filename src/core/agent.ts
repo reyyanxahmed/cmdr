@@ -21,6 +21,7 @@ export class Agent {
   private readonly toolRegistry: ToolRegistry
   private readonly toolExecutor: ToolExecutor
   private readonly permissionManager?: PermissionManager
+  private readonly metadata?: Readonly<Record<string, unknown>>
   private state: AgentState
   private cwd: string
 
@@ -30,12 +31,14 @@ export class Agent {
     toolRegistry: ToolRegistry,
     cwd?: string,
     permissionManager?: PermissionManager,
+    metadata?: Readonly<Record<string, unknown>>,
   ) {
     this.config = config
     this.adapter = adapter
     this.toolRegistry = toolRegistry
     this.toolExecutor = new ToolExecutor(toolRegistry)
     this.permissionManager = permissionManager
+    this.metadata = metadata
     this.cwd = cwd ?? process.cwd()
     this.state = {
       status: 'idle',
@@ -162,6 +165,8 @@ export class Agent {
       agentRole: 'assistant',
       cwd: this.cwd,
       abortSignal,
+      thinkingEnabled: this.config.thinkingEnabled,
+      metadata: this.metadata,
     }, this.permissionManager)
   }
 

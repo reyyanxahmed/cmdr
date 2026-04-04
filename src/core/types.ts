@@ -123,6 +123,8 @@ export interface AgentConfig {
   readonly maxTurns?: number
   readonly maxTokens?: number
   readonly temperature?: number
+  /** Override thinking mode: true = force think, false = disable thinking. */
+  readonly thinkingEnabled?: boolean
 }
 
 export interface AgentState {
@@ -240,6 +242,7 @@ export interface CommandContext {
   session: SessionState
   switchModel: (model: string) => void
   clearHistory: () => void
+  setThinkingMode: (mode: 'on' | 'off' | 'auto') => void
   ollamaUrl: string
   adapter: LLMAdapter
   model: string
@@ -335,6 +338,8 @@ export interface LLMChatOptions {
   readonly temperature?: number
   readonly systemPrompt?: string
   readonly abortSignal?: AbortSignal
+  /** Override model-family thinking mode: true = force think, false = force no-think, undefined = auto. */
+  readonly thinkingEnabled?: boolean
 }
 
 export interface LLMStreamOptions extends LLMChatOptions {}
