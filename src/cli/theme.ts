@@ -2,12 +2,14 @@
  * cmdr theme — AMOLED black with green + purple accents.
  *
  * This module centralizes all color and styling constants for the TUI.
+ * Colors now derive from the active CmdrTheme when possible.
  */
 
-import chalk from 'chalk'
+import chalk, { type ChalkInstance } from 'chalk'
+import { getActiveTheme } from './themes.js'
 
 // ---------------------------------------------------------------------------
-// Core palette — AMOLED black (#000000) background assumption
+// Core palette — theme-aware getters with fallback constants
 // ---------------------------------------------------------------------------
 
 /** Bright neon green — primary accent (user input, success, active elements) */
@@ -32,6 +34,16 @@ export const WHITE = chalk.hex('#E0E0E0')
 export const DIM = chalk.hex('#555555')
 /** Bright white — emphasis */
 export const BRIGHT = chalk.hex('#FFFFFF')
+
+// Theme-aware color accessors (re-evaluated on each call)
+export function themeGreen(): ChalkInstance { return chalk.hex(getActiveTheme().ui.prompt) }
+export function themePurple(): ChalkInstance { return chalk.hex(getActiveTheme().text.accent) }
+export function themeCyan(): ChalkInstance { return chalk.hex(getActiveTheme().tool.name) }
+export function themeSuccess(): ChalkInstance { return chalk.hex(getActiveTheme().status.success) }
+export function themeError(): ChalkInstance { return chalk.hex(getActiveTheme().status.error) }
+export function themeWarning(): ChalkInstance { return chalk.hex(getActiveTheme().status.warning) }
+export function themeInfo(): ChalkInstance { return chalk.hex(getActiveTheme().status.info) }
+export function themeMuted(): ChalkInstance { return chalk.hex(getActiveTheme().text.secondary) }
 
 // ---------------------------------------------------------------------------
 // Semantic styles
@@ -93,6 +105,21 @@ export const ERROR_SYMBOL = RED('✗')
 export const INFO_SYMBOL = PURPLE_DIM('ℹ')
 /** Separator line */
 export const SEPARATOR = GREEN_DIM('─'.repeat(60))
+
+// ---------------------------------------------------------------------------
+// Tool lifecycle indicators
+// ---------------------------------------------------------------------------
+
+/** Tool queued / pending */
+export const TOOL_PENDING = DIM('◌')
+/** Tool currently executing */
+export const TOOL_EXECUTING = YELLOW('⟳')
+/** Tool completed successfully */
+export const TOOL_SUCCESS = GREEN('✓')
+/** Tool failed with error */
+export const TOOL_ERROR = RED('✗')
+/** Tool was cancelled */
+export const TOOL_CANCELLED = DIM('⊘')
 
 // ---------------------------------------------------------------------------
 // ASCII art banner
