@@ -28,6 +28,7 @@ import type { PluginManager } from '../../plugins/plugin-manager.js'
 import type { McpClient } from '../../plugins/mcp-client.js'
 import type { ToolRegistry } from '../../tools/registry.js'
 import type { AgentRegistry } from '../../agents/registry.js'
+import StatusBar from './StatusBar.js'
 
 // We use chalk directly for coloring since Ink <Text> color props are limited
 import chalk from 'chalk'
@@ -197,6 +198,9 @@ export default function App(props: InkAppProps): React.ReactElement {
   const [approvalInput, setApprovalInput] = useState('')
   const approvalQueueRef = useRef<ApprovalRequest[]>([])
   const abortRef = useRef<AbortController | null>(null)
+  const [tokensIn, setTokensIn] = useState(0)
+  const [tokensOut, setTokensOut] = useState(0)
+  const [turnCount, setTurnCount] = useState(0)
 
   const currentModelRef = useRef(props.model)
   const activeTeamRef = useRef(props.activeTeamConfig)
@@ -388,7 +392,7 @@ export default function App(props: InkAppProps): React.ReactElement {
                 return `${DIM(k + ':')} ${WHITE(val)}`
               })
               .join(' ')
-            appendOutput(`  ${TOOL_SYM} ${CYAN.bold(block.name)} ${toolSummary}`)
+            appendOutput(`  ${YELLOW('⟳')} ${CYAN.bold(block.name)} ${toolSummary}`)
             startSpinner('tool', block.name)
             break
           }
@@ -459,6 +463,9 @@ export default function App(props: InkAppProps): React.ReactElement {
     appendOutput(`  ${DIM(summary)}${tokenInfo}`)
 
     costTracker.record(currentModelRef.current, tokens.input_tokens, tokens.output_tokens, toolCallCount)
+    setTokensIn(prev => prev + tokens.input_tokens)
+    setTokensOut(prev => prev + tokens.output_tokens)
+    setTurnCount(prev => prev + 1)
     session.syncFromAgent(agent.getHistory())
 
     // Auto-compact if needed
@@ -961,13 +968,24 @@ export default function App(props: InkAppProps): React.ReactElement {
 
       {/* Input prompt (only when idle) */}
       {state === 'idle' && (
-        <Box>
-          <Text>{GREEN.bold('❯')} </Text>
-          <TextInput
-            value={inputValue}
-            onChange={setInputValue}
-            onSubmit={handleSubmit}
+        <Box flexDirection="column">
+          <StatusBar
+            model={currentModelRef.current}
+            tokensIn={tokensIn}
+            tokensOut={tokensOut}
+            turns={turnCount}
+            agentCount={agentRegistry.list().length}
+            permissionMode={permissionManager.getMode()}
+            cwd={process.cwd()}
           />
+          <Box>
+            <Text>{GREEN.bold('❯')} </Text>
+            <TextInput
+              value={inputValue}
+              onChange={setInputValue}
+              onSubmit={handleSubmit}
+            />
+          </Box>
         </Box>
       )}
     </Box>

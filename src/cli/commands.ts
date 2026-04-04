@@ -7,6 +7,7 @@ import {
   PURPLE, GREEN, CYAN, DIM, WHITE, commandText, dimText, YELLOW, RED,
   renderSessionStatus, renderContextWindow, SEPARATOR, renderInfo,
 } from './theme.js'
+import { listThemeNames, getActiveTheme, setActiveTheme, t } from './themes.js'
 import { getDefaultContextLength, getAllModels, getModelInfo } from '../llm/model-registry.js'
 import { countTokens } from '../llm/token-counter.js'
 import { listSessions } from '../session/session-persistence.js'
@@ -486,6 +487,36 @@ registerCommand({
     if (sub === 'create' && rest) return `__SKILL_CREATE__:${rest}`
 
     return renderInfo('Usage: /skill info <name> | /skill install <path> | /skill create <name>')
+  },
+})
+
+registerCommand({
+  name: 'theme',
+  description: 'Switch theme: /theme [name], /theme list',
+  execute: async (args) => {
+    if (!args || args === 'list') {
+      const names = listThemeNames()
+      const current = getActiveTheme().name
+      const lines = [
+        '',
+        `  ${PURPLE.bold('Themes')} ${DIM(`(${names.length})`)}`,
+        '',
+        ...names.map(n => {
+          const marker = n === current ? ` ${GREEN('← active')}` : ''
+          return `  ${GREEN('•')} ${WHITE(n)}${marker}`
+        }),
+        '',
+        `  ${DIM('Switch with:')} ${GREEN('/theme <name>')}`,
+        '',
+      ]
+      return lines.join('\n')
+    }
+
+    const name = args.trim().toLowerCase()
+    if (setActiveTheme(name)) {
+      return renderInfo(`Theme set to ${GREEN(name)}`)
+    }
+    return renderInfo(`Unknown theme: ${RED(name)}. Use /theme list to see options.`)
   },
 })
 
