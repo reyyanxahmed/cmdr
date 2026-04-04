@@ -7,7 +7,7 @@ import {
   PURPLE, GREEN, CYAN, DIM, WHITE, commandText, dimText, YELLOW, RED,
   renderSessionStatus, renderContextWindow, SEPARATOR, renderInfo,
 } from './theme.js'
-import { getDefaultContextLength } from '../llm/model-registry.js'
+import { getDefaultContextLength, getAllModels, getModelInfo } from '../llm/model-registry.js'
 import { countTokens } from '../llm/token-counter.js'
 import { listSessions } from '../session/session-persistence.js'
 import { listTeamPresets } from '../core/presets.js'
@@ -124,7 +124,11 @@ registerCommand({
         '',
         ...models.map((m: string, i: number) => {
           const current = m === context.model ? ` ${DIM('← current')}` : ''
-          return `  ${GREEN(`${i + 1}.`)} ${WHITE(m)}${current}`
+          const info = getModelInfo(m)
+          const meta = info
+            ? DIM(` [${info.parameterSize}, ${(info.contextLength / 1024).toFixed(0)}k ctx${info.supportsTools ? ', tools' : ''}]`)
+            : ''
+          return `  ${GREEN(`${i + 1}.`)} ${WHITE(m)}${meta}${current}`
         }),
         '',
         `  ${DIM('Switch with:')} ${GREEN('/model <name>')} ${DIM('or')} ${GREEN('/model <number>')}`,

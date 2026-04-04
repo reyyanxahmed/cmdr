@@ -21,7 +21,8 @@ import type { TeamConfig } from '../core/types.js'
 import { SessionManager } from '../session/session-manager.js'
 import { discoverProject } from '../session/project-context.js'
 import { buildSystemPrompt } from '../session/prompt-builder.js'
-import { getDefaultContextLength, resolveContextLength } from '../llm/model-registry.js'
+import { getDefaultContextLength, resolveContextLength, discoverOllamaModels } from '../llm/model-registry.js'
+import { ModelWatcher } from '../llm/model-watcher.js'
 import {
   renderWelcome, renderError,
   GREEN, PURPLE, DIM, WHITE,
@@ -68,6 +69,13 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     ))
     process.exit(1)
   }
+
+  // Auto-discover all installed Ollama models into the registry
+  await discoverOllamaModels(options.ollamaUrl)
+
+  // Start background model watcher — detects newly pulled models
+  const modelWatcher = new ModelWatcher(options.ollamaUrl, 30_000)
+  modelWatcher.start()
 
   // Discover project
   const projectContext = await discoverProject(cwd)
@@ -151,6 +159,8 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   const agentConfig = { ...SOLO_CODER, model: currentModel, systemPrompt }
   if (options.maxTurns) {
     agentConfig.maxTurns = options.maxTurns
+  } else if (config.maxTurns) {
+    agentConfig.maxTurns = config.maxTurns
   }
   const agent = new Agent(
     agentConfig,
@@ -245,6 +255,9 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   )
 
   await app.waitUntilExit()
+
+  // Cleanup background watcher
+  modelWatcher.stop()
 }
 
 // ---------------------------------------------------------------------------
