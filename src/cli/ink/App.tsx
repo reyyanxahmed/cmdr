@@ -27,6 +27,7 @@ import type { UndoManager } from '../../session/undo-manager.js'
 import type { PluginManager } from '../../plugins/plugin-manager.js'
 import type { McpClient } from '../../plugins/mcp-client.js'
 import type { ToolRegistry } from '../../tools/registry.js'
+import type { AgentRegistry } from '../../agents/registry.js'
 
 // We use chalk directly for coloring since Ink <Text> color props are limited
 import chalk from 'chalk'
@@ -105,6 +106,7 @@ export interface InkAppProps {
   pluginManager: PluginManager
   mcpClient: McpClient
   toolRegistry: ToolRegistry
+  agentRegistry: AgentRegistry
   ollamaUrl: string
   verbose: boolean
   doSave: () => Promise<void>
@@ -181,7 +183,7 @@ export default function App(props: InkAppProps): React.ReactElement {
   const {
     agent, session, permissionManager, adapter,
     orchestrator, costTracker, undoManager,
-    pluginManager, mcpClient, toolRegistry, ollamaUrl, verbose,
+    pluginManager, mcpClient, toolRegistry, agentRegistry, ollamaUrl, verbose,
     doSave, autoSaver,
   } = props
 
@@ -622,18 +624,49 @@ export default function App(props: InkAppProps): React.ReactElement {
     }
 
     if (result === '__AGENTS_STATUS__') {
-      if (!activeTeamRef.current) {
-        appendOutput(`  ${DIM('ℹ')} ${WHITE(`Solo mode (agent: ${GREEN('cmdr')}). Use /team <preset> for multi-agent.`)}`)
+      const agents = agentRegistry.list()
+      if (agents.length === 0) {
+        appendOutput(`  ${DIM('No subagents loaded. Place .md files in .cmdr/agents/ or ~/.cmdr/agents/')}`)
       } else {
-        const status = orchestrator.getStatus()
-        const lines = ['', `  ${PURPLE.bold(`Team: ${activeTeamRef.current.name}`)}`, '']
-        for (const agentCfg of activeTeamRef.current.agents) {
-          const agentStatus = status?.agents.find(a => a.name === agentCfg.name)
-          const statusLabel = agentStatus ? DIM(agentStatus.status) : DIM('idle')
-          lines.push(`  ${GREEN('•')} ${WHITE(agentCfg.name.padEnd(12))} ${statusLabel}`)
+        const lines = ['', `  ${PURPLE.bold('Subagents')} ${DIM(`(${agents.length})`)}`, '']
+        for (const ag of agents) {
+          const sourceLabel = ag.source === 'bundled' ? DIM('[bundled]') : ag.source === 'user' ? DIM('[user]') : DIM('[project]')
+          const toolCount = ag.tools.length
+          lines.push(`  ${GREEN('•')} ${CYAN(ag.name.padEnd(16))} ${WHITE(ag.description.slice(0, 60))}`)
+          lines.push(`    ${DIM(`${toolCount} tools · ${ag.maxTurns} turns · temp ${ag.temperature}`)} ${sourceLabel}`)
         }
         lines.push('')
+        lines.push(`  ${DIM('Use @<name> <task> to delegate, or /agents info <name> for details.')}`)
+        lines.push('')
         appendLines(lines)
+      }
+      return false
+    }
+
+    if (typeof result === 'string' && result.startsWith('__AGENT_INFO__:')) {
+      const agentName = result.slice('__AGENT_INFO__:'.length)
+      const ag = agentRegistry.get(agentName)
+      if (!ag) {
+        appendOutput(`  ${ERROR_SYM} ${RED(`Unknown agent: ${agentName}`)}`)
+      } else {
+        const lines = [
+          '',
+          `  ${PURPLE.bold(ag.name)} ${DIM(`[${ag.source}]`)}`,
+          `  ${WHITE(ag.description)}`,
+          '',
+          `  ${DIM('Kind:')}        ${ag.kind}`,
+          `  ${DIM('Model:')}       ${ag.model ?? 'inherit from parent'}`,
+          `  ${DIM('Temperature:')} ${ag.temperature}`,
+          `  ${DIM('Max turns:')}   ${ag.maxTurns}`,
+          `  ${DIM('Tools:')}       ${ag.tools.join(', ') || 'none'}`,
+          `  ${DIM('Source:')}      ${ag.filePath}`,
+          '',
+          `  ${DIM('System prompt:')}`,
+          ...ag.systemPrompt.split('\n').slice(0, 10).map(l => `  ${DIM('│')} ${WHITE(l)}`),
+          ag.systemPrompt.split('\n').length > 10 ? `  ${DIM(`  ... (${ag.systemPrompt.split('\n').length - 10} more lines)`)}` : '',
+          '',
+        ]
+        appendLines(lines.filter(Boolean))
       }
       return false
     }
@@ -774,6 +807,22 @@ export default function App(props: InkAppProps): React.ReactElement {
       if (isSlashCommand(input)) {
         const shouldExit = await processCommand(input)
         if (shouldExit) return
+      } else if (input.startsWith('@')) {
+        // @agent syntax: @investigator explain the auth flow
+        const spaceIdx = input.indexOf(' ')
+        const agentName = spaceIdx === -1 ? input.slice(1) : input.slice(1, spaceIdx)
+        const agentTask = spaceIdx === -1 ? '' : input.slice(spaceIdx + 1).trim()
+
+        if (agentRegistry.has(agentName)) {
+          if (!agentTask) {
+            appendOutput(`  ${ERROR_SYM} ${RED('Usage:')} @${agentName} <task description>`)
+          } else {
+            const delegateMsg = `[System: The user has requested the "${agentName}" subagent. Please immediately call the "${agentName}" tool with the following task: ${agentTask}]`
+            await handleUserMessage(delegateMsg)
+          }
+        } else {
+          appendOutput(`  ${ERROR_SYM} ${RED(`Unknown agent: ${agentName}`)}. Use /agents to list available agents.`)
+        }
       } else if (activeTeamRef.current) {
         await handleTeamMessage(input, activeTeamRef.current)
       } else {
