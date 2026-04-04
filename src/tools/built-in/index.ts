@@ -13,14 +13,19 @@ import { globTool } from './glob.js'
 import { gitDiffTool } from './git-diff.js'
 import { gitLogTool } from './git-log.js'
 import { gitCommitTool, gitBranchTool } from './git-commit.js'
+import { gitWorktreeTool } from './git-worktree.js'
 import { thinkTool } from './think.js'
 import { webFetchTool } from './web-fetch.js'
 import { askUserTool } from './ask-user.js'
 import { memoryReadTool, memoryWriteTool } from './memory.js'
+import { lspDiagnosticsTool } from './diagnostics.js'
+import { notebookReadTool, notebookEditTool, notebookRunTool } from './notebook.js'
 
 export {
   bashTool, fileReadTool, fileWriteTool, fileEditTool,
   grepTool, globTool, gitDiffTool, gitLogTool, gitCommitTool, gitBranchTool,
+  gitWorktreeTool, lspDiagnosticsTool,
+  notebookReadTool, notebookEditTool, notebookRunTool,
   thinkTool, webFetchTool, askUserTool, memoryReadTool, memoryWriteTool,
 }
 
@@ -28,6 +33,8 @@ export {
 export const BUILT_IN_TOOLS: ToolDefinition<any>[] = [
   bashTool, fileReadTool, fileWriteTool, fileEditTool,
   grepTool, globTool, gitDiffTool, gitLogTool, gitCommitTool, gitBranchTool,
+  gitWorktreeTool, lspDiagnosticsTool,
+  notebookReadTool, notebookEditTool, notebookRunTool,
   thinkTool, webFetchTool, askUserTool, memoryReadTool, memoryWriteTool,
 ]
 
