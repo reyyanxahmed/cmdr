@@ -16,7 +16,7 @@ import * as readline from 'readline'
 import { createRequire } from 'module'
 
 const require = createRequire(import.meta.url)
-const { version: VERSION } = require('../package.json')
+const { version: VERSION } = require('../../package.json')
 
 /** Prompt user to pick a model from the list. */
 function promptModelSelection(models: string[]): Promise<string> {
