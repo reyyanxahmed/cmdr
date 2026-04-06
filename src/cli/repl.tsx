@@ -27,7 +27,7 @@ import { ModelWatcher } from '../llm/model-watcher.js'
 import {
   renderWelcome, renderError,
   GREEN, PURPLE, DIM, WHITE,
-  renderInfo, YELLOW, RED,
+  YELLOW, RED,
 } from './theme.js'
 import type { WelcomeOptions } from './theme.js'
 import { PermissionManager } from '../core/permissions.js'
@@ -309,6 +309,30 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   // Emit session start event
   globalEventBus.emit('session:start', { sessionId: session.id ?? 'default' })
 
+  let resumedSessionSummary: string | undefined
+  let startupNotice: string | undefined
+
+  // Resolve resume/continue before printing welcome so startup metadata can render as one coherent block.
+  if (options.resume) {
+    const saved = await loadSession(options.resume)
+    if (saved) {
+      agent.replaceMessages(saved.messages)
+      session.syncFromAgent(saved.messages)
+      resumedSessionSummary = `resumed ${saved.id} (${saved.messages.length} messages)`
+    } else {
+      startupNotice = renderError(`Session not found: ${options.resume}`)
+    }
+  } else if (options.continue) {
+    const saved = await findRecentSession(cwd)
+    if (saved) {
+      agent.replaceMessages(saved.messages)
+      session.syncFromAgent(saved.messages)
+      resumedSessionSummary = `continued ${saved.id} (${saved.messages.length} messages)`
+    } else {
+      startupNotice = `  ${DIM('No previous session found for this directory.')}`
+    }
+  }
+
   // --- Welcome banner (prints to normal terminal before Ink takes over) ---
   let gitBranch: string | undefined
   try {
@@ -325,39 +349,20 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     version: options.version,
     gitBranch,
     permissionMode: permissionManager.getMode(),
+    teamName: activeTeamConfig?.name,
+    teamAgentCount: activeTeamConfig?.agents.length,
     cmdrMdLines,
     agentCount,
     customCmdCount,
     pluginCount: pluginManager.list?.().length || 0,
     mcpServerCount,
+    resumedSession: resumedSessionSummary,
     cwd,
   }
   console.log(renderWelcome(currentModel, projectInfo, options.version, welcomeOpts))
 
-  if (activeTeamConfig) {
-    const teamAgents = activeTeamConfig.agents.map(a => a.name).join(', ')
-    console.log(`  ${DIM('Team:')} ${PURPLE(activeTeamConfig.name)} ${DIM(`(${teamAgents})`)}`)
-  }
-
-  // --- Resume session if requested ---
-  if (options.resume) {
-    const saved = await loadSession(options.resume)
-    if (saved) {
-      agent.replaceMessages(saved.messages)
-      session.syncFromAgent(saved.messages)
-      console.log(renderInfo(`Resumed session ${DIM(saved.id)} (${saved.messages.length} messages)`))
-    } else {
-      console.log(renderError(`Session not found: ${options.resume}`))
-    }
-  } else if (options.continue) {
-    const saved = await findRecentSession(cwd)
-    if (saved) {
-      agent.replaceMessages(saved.messages)
-      session.syncFromAgent(saved.messages)
-      console.log(renderInfo(`Continued session ${DIM(saved.id)} (${saved.messages.length} messages)`))
-    } else {
-      console.log(DIM('  No previous session found for this directory.'))
-    }
+  if (startupNotice) {
+    console.log(startupNotice)
   }
 
   // Debounced auto-save (max once per 5s)

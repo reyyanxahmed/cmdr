@@ -9,7 +9,7 @@
 
 import { parseArgs, printHelp } from '../src/cli/args.js'
 import { startRepl } from '../src/cli/repl.js'
-import { GREEN, PURPLE, DIM, renderError, WHITE, CYAN } from '../src/cli/theme.js'
+import { GREEN, PURPLE, DIM, renderError, WHITE, CYAN, BRIGHT } from '../src/cli/theme.js'
 import { OllamaAdapter } from '../src/llm/ollama.js'
 import { checkForUpdate } from '../src/cli/update-checker.js'
 import * as readline from 'readline'
@@ -18,36 +18,132 @@ import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 const { version: VERSION } = require('../../package.json')
 
+function isRecommendedModel(modelName: string): boolean {
+  const name = modelName.toLowerCase()
+  return name.includes('coder') || name.includes('code') || name.includes('deepseek')
+}
+
+function defaultModelIndex(models: string[]): number {
+  const recommended = models.findIndex(isRecommendedModel)
+  return recommended >= 0 ? recommended : 0
+}
+
 /** Prompt user to pick a model from the list. */
 function promptModelSelection(models: string[]): Promise<string> {
-  return new Promise((resolve) => {
-    console.log('')
-    console.log(`  ${PURPLE.bold('Available models')}`)
-    console.log('')
-    for (let i = 0; i < models.length; i++) {
-      const label = models[i].toLowerCase().includes('coder')
-        ? `${WHITE(models[i])} ${DIM('(recommended)')}`
-        : WHITE(models[i])
-      console.log(`  ${GREEN(`${i + 1}.`)} ${label}`)
-    }
-    console.log('')
+  const fallbackIndex = defaultModelIndex(models)
 
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: true,
-    })
-    rl.question(`  ${CYAN('Select model')} ${DIM(`[1-${models.length}]`)}: `, (answer) => {
-      rl.close()
-      const idx = parseInt(answer.trim(), 10) - 1
-      if (idx >= 0 && idx < models.length) {
-        resolve(models[idx])
-      } else {
-        // Default to first model on invalid input
-        console.log(`  ${DIM('Invalid selection, using:')} ${GREEN(models[0])}`)
-        resolve(models[0])
+  if (
+    !process.stdin.isTTY ||
+    !process.stdout.isTTY ||
+    typeof (process.stdin as NodeJS.ReadStream).setRawMode !== 'function'
+  ) {
+    console.log(`  ${DIM('Non-interactive terminal detected, using:')} ${GREEN(models[fallbackIndex])}`)
+    return Promise.resolve(models[fallbackIndex])
+  }
+
+  return new Promise((resolve) => {
+    const stdin = process.stdin as NodeJS.ReadStream
+    const stdout = process.stdout
+    const wasRaw = Boolean(stdin.isRaw)
+    let selected = fallbackIndex
+    let renderedLines = 0
+
+    const clearRendered = (): void => {
+      if (renderedLines <= 0) return
+      readline.moveCursor(stdout, 0, -renderedLines)
+      readline.clearScreenDown(stdout)
+      renderedLines = 0
+    }
+
+    const renderMenu = (): void => {
+      clearRendered()
+
+      const lines: string[] = [
+        '',
+        `  ${PURPLE.bold('Select a model')}`,
+        `  ${DIM('Use ↑/↓ to navigate, Enter to confirm')}`,
+        '',
+      ]
+
+      for (let i = 0; i < models.length; i++) {
+        const isActive = i === selected
+        const isRecommended = isRecommendedModel(models[i])
+        const pointer = isActive ? CYAN('❯') : DIM(' ')
+        const ordinal = DIM(`${String(i + 1).padStart(2, ' ')}.`)
+        const modelLabel = isActive ? CYAN.bold(models[i]) : DIM(models[i])
+        const recommendation = isRecommended ? ` ${GREEN('●')} ${DIM('recommended')}` : ''
+        lines.push(`  ${pointer} ${ordinal} ${modelLabel}${recommendation}`)
       }
-    })
+
+      lines.push('')
+      lines.push(`  ${DIM('Esc picks default:')} ${GREEN(models[fallbackIndex])}`)
+
+      stdout.write(lines.join('\n'))
+      renderedLines = lines.length
+    }
+
+    const cleanup = (): void => {
+      stdin.off('keypress', onKeypress)
+      if (typeof stdin.setRawMode === 'function') {
+        stdin.setRawMode(wasRaw)
+      }
+      stdin.pause()
+      stdout.write('\x1B[?25h')
+    }
+
+    const finish = (chosenModel: string, statusLine: string): void => {
+      cleanup()
+      clearRendered()
+      console.log(statusLine)
+      resolve(chosenModel)
+    }
+
+    const onKeypress = (input: string, key: readline.Key): void => {
+      if (key.ctrl && key.name === 'c') {
+        cleanup()
+        clearRendered()
+        stdout.write('\n')
+        process.exit(130)
+      }
+
+      if (key.name === 'up') {
+        selected = (selected - 1 + models.length) % models.length
+        renderMenu()
+        return
+      }
+
+      if (key.name === 'down') {
+        selected = (selected + 1) % models.length
+        renderMenu()
+        return
+      }
+
+      if (key.name === 'return') {
+        finish(models[selected], `  ${DIM('Selected model:')} ${GREEN(models[selected])}`)
+        return
+      }
+
+      if (key.name === 'escape') {
+        finish(models[fallbackIndex], `  ${DIM('Using default model:')} ${GREEN(models[fallbackIndex])}`)
+        return
+      }
+
+      if (input && /^\d$/.test(input)) {
+        const idx = parseInt(input, 10) - 1
+        if (idx >= 0 && idx < models.length) {
+          selected = idx
+          renderMenu()
+        }
+      }
+    }
+
+    readline.emitKeypressEvents(stdin)
+    stdin.setRawMode?.(true)
+    stdin.resume()
+    stdout.write('\x1B[?25l')
+    stdin.on('keypress', onKeypress)
+
+    renderMenu()
   })
 }
 
