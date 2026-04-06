@@ -66,6 +66,7 @@ If a CMDR.md file exists in the project root, follow its instructions. It contai
     'grep', 'glob', 'git_diff', 'git_log', 'think',
     'memory_read', 'memory_write',
     'graph_impact', 'graph_query', 'graph_review',
+    'pdf_report',
   ],
   maxTurns: 30,
 }
