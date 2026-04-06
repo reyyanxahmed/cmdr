@@ -359,7 +359,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     resumedSession: resumedSessionSummary,
     cwd,
   }
-  console.log(renderWelcome(currentModel, projectInfo, options.version, welcomeOpts))
+  const welcomeBanner = renderWelcome(currentModel, projectInfo, options.version, welcomeOpts)
 
   if (startupNotice) {
     console.log(startupNotice)
@@ -421,6 +421,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
       autoSaver,
       version: options.version,
       gitBranch,
+      welcomeBanner,
     }),
     {
       exitOnCtrlC: false,   // We handle Ctrl+C ourselves
