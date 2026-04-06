@@ -126,14 +126,12 @@ export const TOOL_CANCELLED = DIM('⊘')
 // ---------------------------------------------------------------------------
 
 const CMDR_LOGO_LARGE = [
-  '   █████████   ██████   ██████  ██████████    ██████████',
-  '  ███░░░░░███ ░░██████ ██████  ░░███░░░░░███ ░░███░░░░░███',
-  ' ███     ░░░   ░███░█████░███   ░███    ░███  ░███    ░███',
-  '░███           ░███░░███ ░███   ░███    ░███  ░██████████',
-  '░███    █████  ░███ ░░░  ░███   ░███    ░███  ░███░░░░███',
-  '░░███  ░░███   ░███      ░███   ░███    ███░  ░███   ░███',
-  ' ░░█████████   █████     █████  ██████████░   █████   █████',
-  '  ░░░░░░░░░   ░░░░░     ░░░░░  ░░░░░░░░░░    ░░░░░   ░░░░░',
+  '   ██████╗   ███╗   ███╗   ██████╗   ██████╗',
+  '  ██╔════╝   ████╗ ████║   ██╔══██╗  ██╔══██╗',
+  '  ██║        ██╔████╔██║   ██║  ██║  ██████╔╝',
+  '  ██║        ██║╚██╔╝██║   ██║  ██║  ██╔══██╗',
+  '  ╚██████╗   ██║ ╚═╝ ██║   ██████╔╝  ██║  ██║',
+  '   ╚═════╝   ╚═╝     ╚═╝   ╚═════╝   ╚═╝  ╚═╝',
 ]
 
 const CMDR_LOGO_COMPACT = [
@@ -146,16 +144,18 @@ const CMDR_LOGO_COMPACT = [
 ]
 
 const CMDR_LOGO_TINY = [
-  ' CMDR',
+  '█▀▀ █▀▄▀█ █▀▄ █▀█',
+  '█▄▄ █░▀░█ █▄▀ █▀▄',
 ]
 
 const LOGO_GRADIENT_HEX = [
-  '#61A5FA',
-  '#7D8DFE',
-  '#9D8AF9',
-  '#C980D5',
-  '#E57CB3',
-  '#F47A9C',
+  '#7CFF5B',
+  '#57C43F',
+  '#2E6622',
+  '#0D0D0D',
+  '#3C0D0D',
+  '#972525',
+  '#FF5D5D',
 ]
 
 function stripAnsi(value: string): string {
@@ -196,7 +196,7 @@ function colorizeLineGradient(line: string): string {
   const maxIndex = Math.max(1, chars.length - 1)
 
   return chars.map((char, idx) => {
-    if (char === ' ') return char
+    if (/\s/.test(char)) return char
     const gradientIndex = Math.round((idx / maxIndex) * (LOGO_GRADIENT_HEX.length - 1))
     return chalk.hex(LOGO_GRADIENT_HEX[gradientIndex]).bold(char)
   }).join('')
