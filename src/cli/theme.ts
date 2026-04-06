@@ -125,16 +125,75 @@ export const TOOL_CANCELLED = DIM('⊘')
 // ASCII art banner
 // ---------------------------------------------------------------------------
 
+const CMDR_LOGO_LARGE = [
+  '   ________  ___  ___  ________  ________ ',
+  '  |\\   ____\\|\\  \\|\\  \\|\\   __  \\|\\   __  \\',
+  '  \\ \\  \\___|\\ \\  \\\\  \\ \\  \\|\\  \\ \\  \\|\\  \\',
+  '   \\ \\  \\    \\ \\   __  \\ \\   _  _\\ \\   _  _\\',
+  '    \\ \\  \\____\\ \\  \\ \\  \\ \\  \\\\  \\\\ \\  \\\\  \\|',
+  '     \\ \\_______\\ \\__\\ \\__\\ \\__\\ _\\\\ \\__\\ _\\',
+  '      \\|_______|\\|__|\\|__|\\|__|\\|__|\\|__|\\|__|\\|__|',
+]
+
+const CMDR_LOGO_COMPACT = [
+  '  ██████╗███╗   ███╗██████╗ ██████╗',
+  ' ██╔════╝████╗ ████║██╔══██╗██╔══██╗',
+  ' ██║     ██╔████╔██║██║  ██║██████╔╝',
+  ' ██║     ██║╚██╔╝██║██║  ██║██╔══██╗',
+  ' ╚██████╗██║ ╚═╝ ██║██████╔╝██║  ██║',
+  '  ╚═════╝╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝',
+]
+
+const CMDR_LOGO_TINY = [
+  '   CMDR',
+]
+
+const LOGO_COLORS: ChalkInstance[] = [
+  GREEN.bold,
+  GREEN.bold,
+  PURPLE.bold,
+  PURPLE.bold,
+  CYAN.bold,
+  CYAN.bold,
+  GREEN_DIM,
+]
+
+function stripAnsi(value: string): string {
+  return value.replace(/\x1b\[[0-9;]*m/g, '')
+}
+
+function visibleWidth(value: string): number {
+  return stripAnsi(value).length
+}
+
+function truncatePlain(value: string, maxWidth: number): string {
+  if (maxWidth <= 0) return ''
+  if (value.length <= maxWidth) return value
+  if (maxWidth === 1) return '…'
+  return `${value.slice(0, maxWidth - 1)}…`
+}
+
+function padAnsi(value: string, width: number): string {
+  const padding = Math.max(0, width - visibleWidth(value))
+  return value + ' '.repeat(padding)
+}
+
+function getLogoForWidth(width: number): string[] {
+  if (width >= 70) return CMDR_LOGO_LARGE
+  if (width >= 50) return CMDR_LOGO_COMPACT
+  return CMDR_LOGO_TINY
+}
+
+function colorizeLogo(logoLines: string[]): string[] {
+  return logoLines.map((line, idx) => {
+    const color = LOGO_COLORS[Math.min(idx, LOGO_COLORS.length - 1)]
+    return color(line)
+  })
+}
+
 export function renderBanner(): string {
-  const art = `
-${GREEN.bold('   ██████╗███╗   ███╗██████╗ ██████╗ ')}
-${GREEN.bold('  ██╔════╝████╗ ████║██╔══██╗██╔══██╗')}
-${PURPLE.bold('  ██║     ██╔████╔██║██║  ██║██████╔╝')}
-${PURPLE.bold('  ██║     ██║╚██╔╝██║██║  ██║██╔══██╗')}
-${GREEN.bold('  ╚██████╗██║ ╚═╝ ██║██████╔╝██║  ██║')}
-${GREEN_DIM('   ╚═════╝╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝')}
-`
-  return art
+  const logo = colorizeLogo(CMDR_LOGO_COMPACT)
+  return ['', ...logo, ''].join('\n')
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +206,8 @@ export interface WelcomeOptions {
   version?: string
   gitBranch?: string
   permissionMode?: string
+  teamName?: string
+  teamAgentCount?: number
   cmdrMdLines?: number
   agentCount?: number
   customCmdCount?: number
@@ -156,117 +217,103 @@ export interface WelcomeOptions {
   cwd?: string
 }
 
-function pad(str: string, len: number): string {
-  const stripped = str.replace(/\x1b\[[0-9;]*m/g, '')
-  const padding = Math.max(0, len - stripped.length)
-  return str + ' '.repeat(padding)
-}
-
 export function renderWelcome(model: string, projectInfo: string, version = '0.0.0', opts?: WelcomeOptions): string {
-  const termWidth = Math.min(process.stdout.columns || 100, 120)
-  const innerWidth = termWidth - 4
-  const dividerCol = Math.floor(innerWidth * 0.46)
-  const leftCol = dividerCol - 1
-  const rightCol = innerWidth - dividerCol - 2
+  const terminalWidth = Math.min(process.stdout.columns || 100, 120)
+  const metadataValueWidth = Math.max(8, terminalWidth - 18)
+  const shortDir = (opts?.cwd || process.cwd()).replace(/^\/Users\/\w+/, '~')
+  const logoLines = colorizeLogo(getLogoForWidth(terminalWidth))
 
-  const B = {
-    tl: GREEN_DIM('╭'), tr: GREEN_DIM('╮'), bl: GREEN_DIM('╰'), br: GREEN_DIM('╯'),
-    h: GREEN_DIM('─'), v: GREEN_DIM('│'), cross: GREEN_DIM('┬'), bcross: GREEN_DIM('┴'),
+  const modelText = truncatePlain(model, metadataValueWidth)
+  const projectText = truncatePlain(projectInfo, metadataValueWidth)
+  const dirText = truncatePlain(shortDir, metadataValueWidth)
+  const branchText = opts?.gitBranch ? truncatePlain(opts.gitBranch, metadataValueWidth) : ''
+
+  const mode = opts?.permissionMode || 'normal'
+  const modeText = mode === 'yolo' ? YELLOW(mode)
+    : mode === 'strict' ? RED(mode)
+      : GREEN(mode)
+
+  const agentCount = opts?.agentCount ?? 0
+  const pluginCount = opts?.pluginCount ?? 0
+  const mcpServerCount = opts?.mcpServerCount ?? 0
+  const customCmdCount = opts?.customCmdCount ?? 0
+  const cmdrMdLines = opts?.cmdrMdLines ?? 0
+
+  const lines: string[] = ['']
+
+  for (const logoLine of logoLines) {
+    lines.push(`  ${logoLine}`)
   }
 
-  const topBorder = `${B.tl}${B.h.repeat(dividerCol)}${B.cross}${B.h.repeat(innerWidth - dividerCol - 1)}${B.tr}`
+  lines.push('')
+  lines.push(`  ${WHITE.bold('cmdr CLI')} ${DIM(`v${version}`)}`)
+  lines.push(`  ${DIM('─'.repeat(Math.max(16, Math.min(terminalWidth - 6, 38))))}`)
+  lines.push('')
 
-  // ─── Left panel ───
-  const leftLines: string[] = [
-    '',
-    `  ${PURPLE.bold('cmdr')} ${DIM(`v${version}`)}`,
-    `  ${DIM('─'.repeat(Math.min(leftCol - 4, 22)))}`,
-    '',
-    `  ${DIM('Model:')}    ${GREEN(model)}`,
-    `  ${DIM('Project:')}  ${CYAN(projectInfo)}`,
-  ]
-
-  if (opts?.gitBranch) {
-    leftLines.push(`  ${DIM('Branch:')}   ${PURPLE(opts.gitBranch)}`)
+  const metadataRow = (label: string, value: string): void => {
+    lines.push(`  ${DIM(label.padEnd(12))}: ${value}`)
   }
 
-  const dir = (opts?.cwd || process.cwd()).replace(/^\/Users\/\w+/, '~')
-  leftLines.push(`  ${DIM('Dir:')}      ${WHITE(dir.length > leftCol - 14 ? '…' + dir.slice(-(leftCol - 15)) : dir)}`)
+  metadataRow('Model', GREEN(modelText))
+  metadataRow('Project', CYAN(projectText))
+  metadataRow('Permission', modeText)
 
-  if (opts?.permissionMode) {
-    const modeColor = opts.permissionMode === 'yolo' ? YELLOW
-      : opts.permissionMode === 'strict' ? RED : GREEN
-    leftLines.push(`  ${DIM('Mode:')}     ${modeColor(opts.permissionMode)}`)
-  }
-
-  leftLines.push('')
-
-  // ─── Right panel ───
-  const rightLines: string[] = [
-    '',
-    `  ${GREEN.bold('Getting started')}`,
-    `  ${DIM('─'.repeat(Math.min(rightCol - 4, 22)))}`,
-    '',
-    `  ${WHITE('1.')} ${DIM('Ask coding questions or edit code')}`,
-    `  ${WHITE('2.')} ${commandText('/help')} ${DIM('for all commands')}`,
-    `  ${WHITE('3.')} ${DIM('@agent <task> to delegate')}`,
-    '',
-  ]
-
-  // Context indicators
-  const contextItems: string[] = []
-  if (opts?.cmdrMdLines && opts.cmdrMdLines > 0) {
-    contextItems.push(`${GREEN('●')} ${WHITE(`${opts.cmdrMdLines}`)} ${DIM('CMDR.md lines')}`)
-  }
-  if (opts?.agentCount && opts.agentCount > 0) {
-    contextItems.push(`${PURPLE('●')} ${WHITE(`${opts.agentCount}`)} ${DIM(opts.agentCount === 1 ? 'agent loaded' : 'agents loaded')}`)
-  }
-  if (opts?.customCmdCount && opts.customCmdCount > 0) {
-    contextItems.push(`${CYAN('●')} ${WHITE(`${opts.customCmdCount}`)} ${DIM('custom commands')}`)
-  }
-  if (opts?.pluginCount && opts.pluginCount > 0) {
-    contextItems.push(`${YELLOW('●')} ${WHITE(`${opts.pluginCount}`)} ${DIM(opts.pluginCount === 1 ? 'plugin' : 'plugins')}`)
-  }
-  if (opts?.mcpServerCount && opts.mcpServerCount > 0) {
-    contextItems.push(`${CYAN('●')} ${WHITE(`${opts.mcpServerCount}`)} ${DIM('MCP servers')}`)
+  if (branchText) {
+    metadataRow('Branch', PURPLE(branchText))
   }
 
-  if (contextItems.length > 0) {
-    rightLines.push(`  ${DIM('Loaded:')}`)
-    for (const item of contextItems) {
-      rightLines.push(`    ${item}`)
-    }
+  metadataRow('Directory', WHITE(dirText))
+
+  if (opts?.teamName) {
+    const teamAgents = opts.teamAgentCount ?? 0
+    const teamSummary = `${opts.teamName} (${teamAgents} ${teamAgents === 1 ? 'agent' : 'agents'})`
+    metadataRow('Team', CYAN(truncatePlain(teamSummary, metadataValueWidth)))
+  }
+
+  if (opts?.resumedSession) {
+    metadataRow('Session', PURPLE(truncatePlain(opts.resumedSession, metadataValueWidth)))
+  }
+
+  lines.push('')
+  metadataRow('Loaded', WHITE(`${agentCount} ${agentCount === 1 ? 'agent' : 'agents'} · ${pluginCount} ${pluginCount === 1 ? 'plugin' : 'plugins'} · ${mcpServerCount} MCP`))
+  metadataRow('Workspace', DIM(`${customCmdCount} ${customCmdCount === 1 ? 'command' : 'commands'} · ${cmdrMdLines} CMDR.md lines`))
+  lines.push('')
+
+  const tipsInnerWidth = Math.max(10, Math.min(94, terminalWidth - 6))
+  const tipsCompact = terminalWidth < 74
+  const tipsHeader = GREEN.bold('Initialize Sequence')
+  const tipOne = tipsCompact ? `${WHITE('1.')} ${DIM('Input query to invoke assistant')}` : `${WHITE('1.')} ${DIM('Input query to invoke coding assistant')}`
+  const tipTwo = tipsCompact ? `${WHITE('2.')} ${commandText('/help')} ${DIM('for configs')}` : `${WHITE('2.')} ${commandText('/help')} ${DIM('to override params and bindings')}`
+  const tipThree = tipsCompact ? `${WHITE('3.')} ${DIM('@agent <task> for runtime')}` : `${WHITE('3.')} ${DIM('@agent <task> to load specialized runtime')}`
+
+  if (terminalWidth >= 58) {
+    const top = `  ${GREEN_DIM(`╭${'─'.repeat(tipsInnerWidth)}╮`)}`
+    const bottom = `  ${GREEN_DIM(`╰${'─'.repeat(tipsInnerWidth)}╯`)}`
+    const tipLine = (content: string): string => `  ${GREEN_DIM('│')}${padAnsi(` ${content}`, tipsInnerWidth)}${GREEN_DIM('│')}`
+
+    lines.push(top)
+    lines.push(tipLine(tipsHeader))
+    lines.push(tipLine(tipOne))
+    lines.push(tipLine(tipTwo))
+    lines.push(tipLine(tipThree))
+    lines.push(bottom)
   } else {
-    rightLines.push(`  ${DIM('No project context loaded.')}`)
-    rightLines.push(`  ${DIM('Add a CMDR.md for custom instructions.')}`)
+    lines.push(`  ${tipsHeader}`)
+    lines.push(`  ${tipOne}`)
+    lines.push(`  ${tipTwo}`)
+    lines.push(`  ${tipThree}`)
   }
-  rightLines.push('')
 
-  // Equalize rows
-  const maxRows = Math.max(leftLines.length, rightLines.length)
-  while (leftLines.length < maxRows) leftLines.push('')
-  while (rightLines.length < maxRows) rightLines.push('')
+  const hintLeft = DIM('Shift+Tab to accept edits')
+  const hintRight = DIM('? for shortcuts')
+  if (terminalWidth >= 64) {
+    const hintGap = Math.max(2, terminalWidth - visibleWidth(hintLeft) - visibleWidth(hintRight) - 4)
+    lines.push(`  ${hintLeft}${' '.repeat(hintGap)}${hintRight}`)
+  } else {
+    lines.push(`  ${hintRight}`)
+  }
 
-  const bodyRows = leftLines.map((left, i) => {
-    const right = rightLines[i] || ''
-    return `${B.v}${pad(left, leftCol)}${B.v}${pad(right, rightCol)}${B.v}`
-  })
-
-  const bottomBorder = `${B.bl}${B.h.repeat(dividerCol)}${B.bcross}${B.h.repeat(innerWidth - dividerCol - 1)}${B.br}`
-
-  // Hint bar below
-  const hintLeft = `  ${DIM('Shift+Tab to accept edits')}`
-  const hintRight = `${DIM('? for shortcuts')}`
-  const hintGap = Math.max(1, termWidth - 28 - 16 - 2)
-  const hintLine = `${hintLeft}${' '.repeat(hintGap)}${hintRight}`
-
-  return [
-    '',
-    topBorder,
-    ...bodyRows,
-    bottomBorder,
-    hintLine,
-  ].join('\n')
+  return lines.join('\n')
 }
 
 export function renderToolExec(toolName: string, input: Record<string, unknown>): string {
