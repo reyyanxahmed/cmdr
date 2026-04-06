@@ -256,18 +256,11 @@ export function renderWelcome(model: string, projectInfo: string, version = '0.0
 
   const lines: string[] = ['']
 
-  if (terminalWidth >= 70) {
-    lines.push('')
-  }
-
   for (const logoLine of logoLines) {
     lines.push(`  ${logoLine}`)
   }
 
   lines.push('')
-  if (terminalWidth >= 70) {
-    lines.push('')
-  }
   lines.push(`  ${WHITE.bold('cmdr CLI')} ${DIM(`v${version}`)}`)
   lines.push(`  ${DIM('─'.repeat(Math.max(22, Math.min(terminalWidth - 6, 56))))}`)
   lines.push('')

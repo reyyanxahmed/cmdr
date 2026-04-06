@@ -376,8 +376,6 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   const cleanupMcp = () => { mcpClient.disconnect('crg') }
 
-  console.log('')
-
   // --- Handle one-shot prompt (non-interactive) ---
   if (options.initialPrompt) {
     await handleOneShot(options.initialPrompt, agent, session, currentModel, permissionManager, verbose, adapter, costTracker, undoManager, options.outputFormat)

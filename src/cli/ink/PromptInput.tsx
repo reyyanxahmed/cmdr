@@ -13,6 +13,7 @@ import { Box, Text, useInput } from 'ink'
 import chalk, { type ChalkInstance } from 'chalk'
 import { getActiveTheme } from '../themes.js'
 import { InputBuffer } from './input-buffer.js'
+import { getAllCommands } from '../commands.js'
 
 const LARGE_PASTE_LINE_THRESHOLD = 5
 const LARGE_PASTE_CHAR_THRESHOLD = 500
@@ -63,8 +64,21 @@ export default function PromptInput(props: PromptInputProps): React.ReactElement
 
   const [version, setVersion] = useState(0)
   const [pasteHint, setPasteHint] = useState<string | null>(null)
+  const [suggestionIndex, setSuggestionIndex] = useState(0)
 
   const snapshot = useMemo(() => bufferRef.current.snapshot(), [version])
+
+  // Slash command autocomplete
+  const suggestions = useMemo(() => {
+    const text = snapshot.lines[0] ?? ''
+    if (snapshot.lines.length !== 1 || !text.startsWith('/')) return []
+    const partial = text.slice(1).toLowerCase()
+    return getAllCommands()
+      .filter(cmd => cmd.name.toLowerCase().startsWith(partial))
+      .slice(0, 8)
+  }, [snapshot])
+
+  const showSuggestions = suggestions.length > 0 && !(suggestions.length === 1 && `/${suggestions[0].name}` === snapshot.lines[0])
 
   const bump = (): void => setVersion(v => v + 1)
 
@@ -138,6 +152,10 @@ export default function PromptInput(props: PromptInputProps): React.ReactElement
     }
 
     if (key.upArrow) {
+      if (showSuggestions) {
+        setSuggestionIndex(i => (i - 1 + suggestions.length) % suggestions.length)
+        return true
+      }
       if (snapshot.lines.length === 1) browseHistoryUp()
       else {
         bufferRef.current.moveUp()
@@ -147,6 +165,10 @@ export default function PromptInput(props: PromptInputProps): React.ReactElement
     }
 
     if (key.downArrow) {
+      if (showSuggestions) {
+        setSuggestionIndex(i => (i + 1) % suggestions.length)
+        return true
+      }
       if (snapshot.lines.length === 1) browseHistoryDown()
       else {
         bufferRef.current.moveDown()
@@ -175,7 +197,23 @@ export default function PromptInput(props: PromptInputProps): React.ReactElement
     }
 
     if (key.tab) {
+      if (showSuggestions) {
+        const chosen = suggestions[suggestionIndex] ?? suggestions[0]
+        if (chosen) {
+          bufferRef.current.setText(`/${chosen.name} `)
+          setSuggestionIndex(0)
+          bump()
+        }
+        return true
+      }
       bufferRef.current.insert('  ')
+      bump()
+      return true
+    }
+
+    if (key.escape && showSuggestions) {
+      bufferRef.current.clear()
+      setSuggestionIndex(0)
       bump()
       return true
     }
@@ -227,8 +265,23 @@ export default function PromptInput(props: PromptInputProps): React.ReactElement
 
   const isEmpty = snapshot.lines.length === 1 && snapshot.lines[0].length === 0
 
+  // Reset suggestion index when list changes
+  useEffect(() => { setSuggestionIndex(0) }, [suggestions.length])
+
   return (
     <Box flexDirection="column" marginTop={1}>
+      {showSuggestions && (
+        <Box flexDirection="column" paddingLeft={2} marginBottom={0}>
+          {suggestions.map((cmd, idx) => {
+            const active = idx === suggestionIndex
+            const prefix = active ? promptColor('▸ ') : dim('  ')
+            const name = active ? promptColor(`/${cmd.name}`) : dim(`/${cmd.name}`)
+            const desc = dim(` ${cmd.description}`)
+            return <Text key={cmd.name}>{prefix}{name}{desc}</Text>
+          })}
+          <Text>{dim('  Tab accept  •  ↑/↓ navigate  •  Esc dismiss')}</Text>
+        </Box>
+      )}
       <Box borderStyle="round" borderColor={borderColor} paddingX={1} paddingY={0} flexDirection="column">
         {snapshot.lines.map((line, idx) => {
           const isCursorLine = !disabled && idx === snapshot.row
