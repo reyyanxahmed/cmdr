@@ -369,16 +369,32 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     }
   }
 
+  const cleanupMcp = () => { mcpClient.disconnect('crg') }
+
   console.log('')
 
   // --- Handle one-shot prompt (non-interactive) ---
   if (options.initialPrompt) {
     await handleOneShot(options.initialPrompt, agent, session, currentModel, permissionManager, verbose, adapter, costTracker, undoManager, options.outputFormat)
     await doSave()
+
+    // Keep one-shot lifecycle consistent with interactive cleanup so process exits cleanly.
+    taskScheduler.stop()
+    cleanupMcp()
+    globalEventBus.emit('session:end', {
+      sessionId: session.id ?? 'default',
+      messageCount: agent.getHistory().length,
+      totalTokens: agent.getState().tokenUsage,
+    })
+    globalEventBus.removeAll()
+    modelWatcher?.stop()
+    process.removeListener('exit', cleanupMcp)
+
     return
   }
 
   // --- Interactive REPL via Ink ---
+  const useAlternateBuffer = process.env.CMDR_NO_ALT_BUFFER !== '1'
   const app = render(
     React.createElement(App, {
       agent,
@@ -406,6 +422,8 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     {
       exitOnCtrlC: false,   // We handle Ctrl+C ourselves
       patchConsole: false,  // Ban console logs from being intercepted during banner
+      alternateBuffer: useAlternateBuffer,
+      incrementalRendering: useAlternateBuffer,
     },
   )
 
@@ -423,7 +441,6 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   modelWatcher?.stop()
 
   // Ensure MCP child processes are killed on unexpected exit
-  const cleanupMcp = () => { mcpClient.disconnect('crg') }
   process.removeListener('exit', cleanupMcp)
 }
 

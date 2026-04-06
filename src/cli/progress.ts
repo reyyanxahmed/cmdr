@@ -1,33 +1,25 @@
 /**
  * Progress tracker — structured phase display for agent execution.
  *
- * Mirrors Claude Code's sectioned rendering:
- * - THINKING phase (reasoning/planning)
- * - TOOL EXECUTION phase (with structured blocks per tool)
- * - GENERATING phase (text output)
+ * Tracks lifecycle phases with compact formatted output blocks.
  *
  * Integrates with the spinner for animated state transitions.
  */
 
-import chalk from 'chalk'
-
-// ---------------------------------------------------------------------------
-// Colors — match cmdr theme
-// ---------------------------------------------------------------------------
-
-const PURPLE = chalk.hex('#BF40FF')
-const GREEN = chalk.hex('#00FF41')
-const CYAN = chalk.hex('#00FFFF')
-const DIM = chalk.hex('#555555')
-const WHITE = chalk.hex('#E0E0E0')
-const YELLOW = chalk.hex('#FFD700')
-const RED = chalk.hex('#FF4444')
+import { PURPLE, GREEN, CYAN, DIM, WHITE, RED } from './theme.js'
 
 // ---------------------------------------------------------------------------
 // Phase tracking
 // ---------------------------------------------------------------------------
 
-export type AgentPhase = 'idle' | 'thinking' | 'tool_exec' | 'generating' | 'done' | 'error'
+export type AgentPhase =
+  | 'idle'
+  | 'thinking'
+  | 'tool_exec'
+  | 'generating'
+  | 'waiting_approval'
+  | 'done'
+  | 'error'
 
 export interface ToolExecInfo {
   readonly name: string
@@ -175,14 +167,21 @@ export function formatToolBlock(
  * Format the "thinking" section header.
  */
 export function formatThinkingHeader(): string {
-  return `\n${PURPLE('◆')} ${PURPLE.bold('THINKING')} ${DIM('─'.repeat(60))}\n`
+  return `\n${PURPLE('◆')} ${PURPLE.bold('ANALYZING')} ${DIM('─'.repeat(58))}\n`
 }
 
 /**
  * Format the "generating" section header.
  */
 export function formatGeneratingHeader(): string {
-  return `\n${GREEN('◆')} ${GREEN.bold('RESPONSE')} ${DIM('─'.repeat(60))}\n`
+  return `\n${GREEN('◆')} ${GREEN.bold('RESPONDING')} ${DIM('─'.repeat(56))}\n`
+}
+
+/**
+ * Format the waiting for approval section header.
+ */
+export function formatApprovalHeader(): string {
+  return `\n${CYAN('◆')} ${CYAN.bold('WAITING FOR APPROVAL')} ${DIM('─'.repeat(45))}\n`
 }
 
 /**

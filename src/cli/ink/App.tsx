@@ -2,13 +2,13 @@
  * Ink-based REPL application — replaces raw readline.
  *
  * Architecture:
- * - <Static> renders all past output (scrollback, never re-rendered)
- * - Dynamic section: active spinner OR input prompt
+ * - Windowed transcript viewport for bounded scrollback rendering
+ * - Dynamic section: active spinner, approval prompts, and input composer
  * - State machine: idle | processing | waiting_approval | exiting
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react'
-import { Box, Text, Static, useApp, useInput } from 'ink'
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { Box, Text, useApp, useInput } from 'ink'
 import TextInput from 'ink-text-input'
 import type { Agent } from '../../core/agent.js'
 import type { SessionManager } from '../../session/session-manager.js'
@@ -32,22 +32,21 @@ import type { CommandLoader } from '../../commands/loader.js'
 import type { TaskScheduler } from '../../scheduling/task-scheduler.js'
 import { listAvailableServers, getServerDefinition, toMcpConfig, getMissingEnvVars } from '../../config/mcp-registry.js'
 import StatusBar from './StatusBar.js'
+import PromptInput from './PromptInput.js'
+import { StreamingMarkdownRenderer } from '../renderer.js'
+import {
+  GREEN,
+  PURPLE,
+  CYAN,
+  DIM,
+  WHITE,
+  YELLOW,
+  RED,
+  SEPARATOR,
+} from '../theme.js'
 
-// We use chalk directly for coloring since Ink <Text> color props are limited
-import chalk from 'chalk'
-
-const GREEN = chalk.hex('#00FF41')
-const GREEN_DIM = chalk.hex('#00BB30')
-const PURPLE = chalk.hex('#BF40FF')
-const CYAN = chalk.hex('#00FFFF')
-const DIM = chalk.hex('#555555')
-const WHITE = chalk.hex('#E0E0E0')
-const YELLOW = chalk.hex('#FFD700')
-const RED = chalk.hex('#FF3333')
 const SUCCESS_SYM = GREEN('✓')
 const ERROR_SYM = RED('✗')
-const TOOL_SYM = CYAN('⚡')
-const SEPARATOR = GREEN_DIM('─'.repeat(60))
 
 // ---------------------------------------------------------------------------
 // Verb pool for spinner
@@ -89,6 +88,8 @@ interface OutputLine {
   id: string
   text: string
 }
+
+const MAX_OUTPUT_LINES = 6000
 
 interface ApprovalRequest {
   toolName: string
@@ -198,8 +199,8 @@ export default function App(props: InkAppProps): React.ReactElement {
   const { exit } = useApp()
 
   const [state, setState] = useState<ReplState>('idle')
-  const [inputValue, setInputValue] = useState('')
   const [outputLines, setOutputLines] = useState<OutputLine[]>([])
+  const [historyScrollOffset, setHistoryScrollOffset] = useState(0)
   const [spinnerText, setSpinnerText] = useState('')
   const [approval, setApproval] = useState<ApprovalRequest | null>(null)
   const [approvalInput, setApprovalInput] = useState('')
@@ -222,16 +223,43 @@ export default function App(props: InkAppProps): React.ReactElement {
 
   // Append output to scrollback
   const appendOutput = useCallback((text: string) => {
-    setOutputLines(prev => [...prev, { id: nextId(), text }])
+    setHistoryScrollOffset(0)
+    setOutputLines(prev => {
+      const next = [...prev, { id: nextId(), text }]
+      return next.length > MAX_OUTPUT_LINES ? next.slice(next.length - MAX_OUTPUT_LINES) : next
+    })
   }, [])
 
   // Append multiple lines at once
   const appendLines = useCallback((lines: string[]) => {
-    setOutputLines(prev => [
-      ...prev,
-      ...lines.map(text => ({ id: nextId(), text })),
-    ])
+    if (lines.length === 0) return
+    setHistoryScrollOffset(0)
+    setOutputLines(prev => {
+      const next = [
+        ...prev,
+        ...lines.map(text => ({ id: nextId(), text })),
+      ]
+      return next.length > MAX_OUTPUT_LINES ? next.slice(next.length - MAX_OUTPUT_LINES) : next
+    })
   }, [])
+
+  const appendRenderedMarkdown = useCallback((rendered: string) => {
+    if (!rendered) return
+    const prefixed = rendered
+      .split('\n')
+      .map((line) => `  ${PURPLE('│')} ${line}`)
+    appendLines(prefixed)
+  }, [appendLines])
+
+  const terminalRows = process.stdout.rows || 42
+  const reservedRows = state === 'idle' ? 9 : state === 'waiting_approval' ? 13 : 6
+  const historyWindowSize = Math.max(8, terminalRows - reservedRows)
+
+  const visibleOutputLines = useMemo(() => {
+    const end = Math.max(0, outputLines.length - historyScrollOffset)
+    const start = Math.max(0, end - historyWindowSize)
+    return outputLines.slice(start, end)
+  }, [outputLines, historyScrollOffset, historyWindowSize])
 
   // ---------------------------------------------------------------------------
   // Spinner management
@@ -240,6 +268,8 @@ export default function App(props: InkAppProps): React.ReactElement {
   const spinnerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const verbRef = useRef(pickVerb())
   const spinnerStartRef = useRef(0)
+  const turnStartRef = useRef(0)
+  const lastVerbRotateSecondRef = useRef(0)
   const spinnerFrameRef = useRef(0)
   const SPINNER_FRAMES = ['◇ ', '◈ ', '◆ ', '◈ ']
 
@@ -247,22 +277,30 @@ export default function App(props: InkAppProps): React.ReactElement {
     stopSpinnerFn()
     spinnerStartRef.current = Date.now()
     verbRef.current = pickVerb()
+    lastVerbRotateSecondRef.current = 0
     spinnerFrameRef.current = 0
+
+    if (mode === 'tool') {
+      setSpinnerText(`  ${CYAN('⚡')} ${CYAN(toolName ?? 'tool')} ${DIM('executing...')}`)
+      return
+    }
 
     const update = () => {
       spinnerFrameRef.current = (spinnerFrameRef.current + 1) % SPINNER_FRAMES.length
       const frame = SPINNER_FRAMES[spinnerFrameRef.current]
       const elapsed = Math.round((Date.now() - spinnerStartRef.current) / 1000)
 
-      if (mode === 'thinking') {
-        // Rotate verb every ~3s
-        if (elapsed > 0 && elapsed % 3 === 0) {
-          verbRef.current = pickVerb()
-        }
-        setSpinnerText(`  ${PURPLE(frame)}${PURPLE(verbRef.current + '...')} ${DIM(`(${elapsed}s)`)}`)
-      } else {
-        setSpinnerText(`  ${CYAN('⚡')} ${CYAN(toolName ?? 'tool')} ${DIM('executing...')}`)
+      // Rotate verb every ~3s, once per threshold crossing.
+      if (
+        elapsed > 0 &&
+        elapsed % 3 === 0 &&
+        elapsed !== lastVerbRotateSecondRef.current
+      ) {
+        verbRef.current = pickVerb()
+        lastVerbRotateSecondRef.current = elapsed
       }
+
+      setSpinnerText(`  ${PURPLE(frame)}${PURPLE(verbRef.current + '...')} ${DIM(`(${elapsed}s)`)}`)
     }
 
     update()
@@ -278,7 +316,8 @@ export default function App(props: InkAppProps): React.ReactElement {
   }, [])
 
   const getCompletionSummary = useCallback(() => {
-    const elapsed = Math.round((Date.now() - spinnerStartRef.current) / 1000)
+    const start = turnStartRef.current || spinnerStartRef.current
+    const elapsed = Math.round((Date.now() - start) / 1000)
     return `${toPastTense(verbRef.current)} for ${elapsed}s`
   }, [])
 
@@ -326,12 +365,16 @@ export default function App(props: InkAppProps): React.ReactElement {
   // ---------------------------------------------------------------------------
 
   const handleUserMessage = useCallback(async (message: string) => {
+    turnStartRef.current = Date.now()
     appendOutput('')
 
     startSpinner('thinking')
 
-    let fullOutput = ''
+    const streamRenderer = new StreamingMarkdownRenderer({
+      width: Math.max(60, (process.stdout.columns || 96) - 8),
+    })
     let firstText = true
+    let hadTextOutput = false
     let currentTool = ''
     let currentToolInput: Record<string, unknown> = {}
     let toolCallCount = 0
@@ -377,28 +420,23 @@ export default function App(props: InkAppProps): React.ReactElement {
               firstText = false
             }
             const chunk = event.data as string
-            fullOutput += chunk
-            // Stream text by appending to the last output line
-            // We'll accumulate and print at the end for cleaner output
+            const rendered = streamRenderer.push(chunk)
+            if (rendered) {
+              hadTextOutput = true
+              appendRenderedMarkdown(rendered)
+            }
             break
           }
 
           case 'tool_use': {
             stopSpinnerFn()
-            if (!firstText) {
-              // Flush accumulated text — strip raw tool_call/thought blocks
-              if (fullOutput) {
-                let displayText = fullOutput
-                displayText = displayText.replace(/```tool_call[\s\S]*?```/g, '').trim()
-                displayText = displayText.replace(/```thought[\s\S]*?```/g, '').trim()
-                if (displayText) {
-                  const formatted = displayText.split('\n').map(l => `  ${PURPLE('│')} ${l}`).join('\n')
-                  appendOutput(formatted)
-                }
-                fullOutput = ''
-              }
-              firstText = true
+            const rendered = streamRenderer.flush()
+            if (rendered) {
+              hadTextOutput = true
+              appendRenderedMarkdown(rendered)
+              appendOutput('')
             }
+            firstText = true
             const block = event.data as ToolUseBlock
             currentTool = block.name
             currentToolInput = block.input
@@ -445,6 +483,11 @@ export default function App(props: InkAppProps): React.ReactElement {
           }
 
           case 'done': {
+            const rendered = streamRenderer.flush()
+            if (rendered) {
+              hadTextOutput = true
+              appendRenderedMarkdown(rendered)
+            }
             stopSpinnerFn()
             break
           }
@@ -474,17 +517,28 @@ export default function App(props: InkAppProps): React.ReactElement {
         // Retry once with compacted context
         try {
           startSpinner('thinking')
-          fullOutput = ''
+          streamRenderer.reset()
           firstText = true
+          hadTextOutput = false
           for await (const event of agent.stream('', callbacks, abortController.signal)) {
             switch (event.type) {
               case 'text': {
                 if (firstText) { stopSpinnerFn(); firstText = false }
-                fullOutput += event.data as string
+                const rendered = streamRenderer.push(event.data as string)
+                if (rendered) {
+                  hadTextOutput = true
+                  appendRenderedMarkdown(rendered)
+                }
                 break
               }
               case 'tool_use': {
                 stopSpinnerFn()
+                const rendered = streamRenderer.flush()
+                if (rendered) {
+                  hadTextOutput = true
+                  appendRenderedMarkdown(rendered)
+                  appendOutput('')
+                }
                 const block = event.data as ToolUseBlock
                 currentTool = block.name
                 currentToolInput = block.input
@@ -516,6 +570,12 @@ export default function App(props: InkAppProps): React.ReactElement {
               }
             }
           }
+
+          const retryRemainder = streamRenderer.flush()
+          if (retryRemainder) {
+            hadTextOutput = true
+            appendRenderedMarkdown(retryRemainder)
+          }
         } catch (retryErr) {
           stopSpinnerFn()
           const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr)
@@ -530,18 +590,13 @@ export default function App(props: InkAppProps): React.ReactElement {
       }
     }
 
-    // Flush remaining text — strip raw tool_call/thought blocks from display
-    if (fullOutput) {
-      let displayText = fullOutput
-      displayText = displayText.replace(/```tool_call[\s\S]*?```/g, '').trim()
-      displayText = displayText.replace(/```thought[\s\S]*?```/g, '').trim()
-      if (displayText) {
-        const formatted = displayText.split('\n').map(l => `  ${PURPLE('│')} ${l}`).join('\n')
-        appendOutput(formatted)
-      }
+    const remainder = streamRenderer.flush()
+    if (remainder) {
+      hadTextOutput = true
+      appendRenderedMarkdown(remainder)
     }
 
-    if (fullOutput || !firstText) {
+    if (hadTextOutput || !firstText) {
       appendOutput('')
     }
 
@@ -574,14 +629,15 @@ export default function App(props: InkAppProps): React.ReactElement {
     autoSaver.schedule(doSave)
     appendOutput(SEPARATOR)
     appendOutput('')
-  }, [agent, session, adapter, costTracker, undoManager, verbose, autoSaver, doSave,
-      appendOutput, startSpinner, stopSpinnerFn, getCompletionSummary])
+    }, [agent, session, adapter, costTracker, undoManager, verbose, autoSaver, doSave,
+      appendOutput, appendRenderedMarkdown, startSpinner, stopSpinnerFn, getCompletionSummary])
 
   // ---------------------------------------------------------------------------
   // Handle team message
   // ---------------------------------------------------------------------------
 
   const handleTeamMessage = useCallback(async (goal: string, teamConfig: TeamConfig) => {
+    turnStartRef.current = Date.now()
     appendOutput('')
     appendOutput(`  ${PURPLE('◈')} Running team ${PURPLE.bold(teamConfig.name)} with ${teamConfig.agents.length} agents...`)
     appendOutput('')
@@ -987,7 +1043,6 @@ export default function App(props: InkAppProps): React.ReactElement {
 
   const handleSubmit = useCallback(async (value: string) => {
     const input = value.trim()
-    setInputValue('')
 
     if (!input) return
     if (stateRef.current !== 'idle') return
@@ -1055,6 +1110,24 @@ export default function App(props: InkAppProps): React.ReactElement {
   // ---------------------------------------------------------------------------
 
   useInput((input, key) => {
+    const maxScrollOffset = Math.max(0, outputLines.length - historyWindowSize)
+    const pageStep = Math.max(1, Math.floor(historyWindowSize * 0.7))
+
+    if (key.pageUp) {
+      setHistoryScrollOffset((prev) => Math.min(maxScrollOffset, prev + pageStep))
+      return
+    }
+
+    if (key.pageDown) {
+      setHistoryScrollOffset((prev) => Math.max(0, prev - pageStep))
+      return
+    }
+
+    if (key.escape && historyScrollOffset > 0) {
+      setHistoryScrollOffset(0)
+      return
+    }
+
     // Ctrl+C handling
     if (key.ctrl && input === 'c') {
       const now = Date.now()
@@ -1130,15 +1203,19 @@ export default function App(props: InkAppProps): React.ReactElement {
   // ---------------------------------------------------------------------------
 
   return (
-    <Box flexDirection="column">
-      {/* Scrollback — all past output */}
-      <Static items={outputLines}>
-        {(line) => (
+    <Box flexDirection="column" height={terminalRows}>
+      {/* Transcript viewport */}
+      <Box flexDirection="column" flexGrow={1} overflow="hidden">
+        {visibleOutputLines.map((line) => (
           <Text key={line.id}>{line.text}</Text>
-        )}
-      </Static>
+        ))}
+      </Box>
 
-      {/* Active spinner (only during processing) */}
+      {historyScrollOffset > 0 && (
+        <Text>{`  ${DIM('Scrollback')} ${WHITE(String(historyScrollOffset))} ${DIM('(PgUp/PgDn, Esc to jump to live)')}`}</Text>
+      )}
+
+      {/* Active spinner */}
       {state === 'processing' && spinnerText && (
         <Text>{spinnerText}</Text>
       )}
@@ -1170,31 +1247,25 @@ export default function App(props: InkAppProps): React.ReactElement {
         </Box>
       )}
 
+      <StatusBar
+        model={currentModelRef.current}
+        tokensIn={tokensIn}
+        tokensOut={tokensOut}
+        turns={turnCount}
+        agentCount={agentRegistry.list().length}
+        permissionMode={permissionManager.getMode()}
+        cwd={process.cwd()}
+        gitBranch={props.gitBranch}
+        contextPct={session.maxContextTokens ? Math.round((session.tokenCount / session.maxContextTokens) * 100) : 0}
+        version={props.version}
+      />
+
       {/* Input prompt (only when idle) */}
       {state === 'idle' && (
-        <Box flexDirection="column">
-          <StatusBar
-            model={currentModelRef.current}
-            tokensIn={tokensIn}
-            tokensOut={tokensOut}
-            turns={turnCount}
-            agentCount={agentRegistry.list().length}
-            permissionMode={permissionManager.getMode()}
-            cwd={process.cwd()}
-            gitBranch={props.gitBranch}
-            contextPct={session.maxContextTokens ? Math.round((session.tokenCount / session.maxContextTokens) * 100) : 0}
-            version={props.version}
-          />
-          <Box>
-            <Text>{GREEN.bold('❯')} </Text>
-            <TextInput
-              value={inputValue}
-              onChange={setInputValue}
-              onSubmit={handleSubmit}
-              placeholder="Ask anything, @file to include, /help for commands"
-            />
-          </Box>
-        </Box>
+        <PromptInput
+          onSubmit={handleSubmit}
+          placeholder="Ask anything, @file to include, /help for commands"
+        />
       )}
     </Box>
   )

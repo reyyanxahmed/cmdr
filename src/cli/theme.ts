@@ -1,5 +1,5 @@
 /**
- * cmdr theme — AMOLED black with green + purple accents.
+ * cmdr theme — Industrial Terminal aesthetic.
  *
  * This module centralizes all color and styling constants for the TUI.
  * Colors now derive from the active CmdrTheme when possible.
@@ -12,33 +12,33 @@ import { getActiveTheme } from './themes.js'
 // Core palette — theme-aware getters with fallback constants
 // ---------------------------------------------------------------------------
 
-/** Bright neon green — primary accent (user input, success, active elements) */
-export const GREEN = chalk.hex('#00FF41')
-/** Dim green — secondary text, borders */
-export const GREEN_DIM = chalk.hex('#00BB30')
-/** Bright purple/violet — secondary accent (AI responses, highlights) */
-export const PURPLE = chalk.hex('#BF40FF')
-/** Dim purple — subtle decorations */
-export const PURPLE_DIM = chalk.hex('#8A2BE2')
-/** Cyan accent — tool names, links */
-export const CYAN = chalk.hex('#00FFFF')
-/** Dim cyan */
-export const CYAN_DIM = chalk.hex('#008B8B')
-/** Yellow — warnings, important notices */
-export const YELLOW = chalk.hex('#FFD700')
-/** Red — errors */
-export const RED = chalk.hex('#FF3333')
-/** White — primary readable text */
-export const WHITE = chalk.hex('#E0E0E0')
-/** Dim gray — metadata, timestamps, less important info */
-export const DIM = chalk.hex('#555555')
-/** Bright white — emphasis */
-export const BRIGHT = chalk.hex('#FFFFFF')
+/** Primary action accent (prompt/user) */
+export const GREEN = chalk.hex('#7CFF5B')
+/** Border/separator ink */
+export const GREEN_DIM = chalk.hex('#314656')
+/** Assistant/responding accent */
+export const PURPLE = chalk.hex('#2DD4BF')
+/** Secondary accent */
+export const PURPLE_DIM = chalk.hex('#22D3EE')
+/** Tool execution accent */
+export const CYAN = chalk.hex('#F59E0B')
+/** Muted tool accent */
+export const CYAN_DIM = chalk.hex('#8A6A36')
+/** Warning */
+export const YELLOW = chalk.hex('#FBBF24')
+/** Error */
+export const RED = chalk.hex('#FF5D5D')
+/** Primary text */
+export const WHITE = chalk.hex('#D5DEE6')
+/** Secondary text */
+export const DIM = chalk.hex('#72808F')
+/** Emphasis text */
+export const BRIGHT = chalk.hex('#F2F7FB')
 
 // Theme-aware color accessors (re-evaluated on each call)
 export function themeGreen(): ChalkInstance { return chalk.hex(getActiveTheme().ui.prompt) }
 export function themePurple(): ChalkInstance { return chalk.hex(getActiveTheme().text.accent) }
-export function themeCyan(): ChalkInstance { return chalk.hex(getActiveTheme().tool.name) }
+export function themeCyan(): ChalkInstance { return chalk.hex(getActiveTheme().message.system) }
 export function themeSuccess(): ChalkInstance { return chalk.hex(getActiveTheme().status.success) }
 export function themeError(): ChalkInstance { return chalk.hex(getActiveTheme().status.error) }
 export function themeWarning(): ChalkInstance { return chalk.hex(getActiveTheme().status.warning) }
@@ -54,7 +54,7 @@ export const userPrompt = GREEN.bold
 /** AI/assistant response text */
 export const assistantText = PURPLE
 /** Tool execution labels */
-export const toolLabel = CYAN.bold
+export const toolLabel = CYAN
 /** Tool output */
 export const toolOutput = WHITE
 /** Error messages */
@@ -68,9 +68,9 @@ export const dimText = DIM
 /** Bold heading */
 export const heading = BRIGHT.bold
 /** Code/monospace text */
-export const codeText = chalk.hex('#00FF41')
+export const codeText = chalk.hex('#7CFF5B')
 /** Slash command */
-export const commandText = CYAN
+export const commandText = PURPLE_DIM
 
 // ---------------------------------------------------------------------------
 // Box drawing characters for panels
