@@ -252,6 +252,7 @@ export default function App(props: InkAppProps): React.ReactElement {
   }, [appendLines])
 
   const terminalRows = process.stdout.rows || 42
+  const hasTranscript = outputLines.length > 0 || state !== 'idle'
   const reservedRows = state === 'idle' ? 9 : state === 'waiting_approval' ? 13 : 6
   const historyWindowSize = Math.max(8, terminalRows - reservedRows)
 
@@ -1203,7 +1204,7 @@ export default function App(props: InkAppProps): React.ReactElement {
   // ---------------------------------------------------------------------------
 
   return (
-    <Box flexDirection="column" height={terminalRows}>
+    <Box flexDirection="column" height={hasTranscript ? terminalRows : undefined}>
       {/* Transcript viewport */}
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
         {visibleOutputLines.map((line) => (

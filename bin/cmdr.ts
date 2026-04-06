@@ -93,7 +93,7 @@ function promptModelSelection(models: string[]): Promise<string> {
       lines.push(`  ${DIM('Esc picks default:')} ${GREEN(models[fallbackIndex])}`)
 
       stdout.write(lines.join('\n'))
-      renderedLines = lines.length
+      renderedLines = lines.length - 1
     }
 
     const cleanup = (): void => {
