@@ -1,7 +1,7 @@
 /**
  * Spinner — loading/thinking indicators for the terminal.
  *
- * Picks a random whimsical verb, rotates every 2–3 s, shows elapsed time.
+ * Picks a rotating verb, shows elapsed time, and tracks structured phases.
  * Integrates with the progress tracker for structured phase transitions.
  */
 
@@ -201,6 +201,22 @@ export function startThinking(_message?: string): void {
   // Rotate verb every 2-3s
   const rotateMs = 2000 + Math.random() * 1000
   rotateTimer = setInterval(rotateVerb, rotateMs)
+}
+
+export function startWaitingApproval(toolName?: string): void {
+  stopSpinner()
+  setPhase('waiting_approval')
+  activeSpinner = ora({
+    text: toolName
+      ? `${CYAN(toolName)} ${DIM('awaiting approval...')}`
+      : `${CYAN('action')} ${DIM('awaiting approval...')}`,
+    spinner: {
+      frames: ['◐', '◓', '◑', '◒'],
+      interval: 160,
+    },
+    color: 'yellow',
+    prefixText: '  ',
+  }).start()
 }
 
 export function startToolExec(toolName: string): void {
