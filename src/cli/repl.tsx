@@ -397,7 +397,6 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   }
 
   // --- Interactive REPL via Ink ---
-  const useAlternateBuffer = process.env.CMDR_NO_ALT_BUFFER !== '1'
   const app = render(
     React.createElement(App, {
       agent,
@@ -426,8 +425,6 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     {
       exitOnCtrlC: false,   // We handle Ctrl+C ourselves
       patchConsole: false,  // Ban console logs from being intercepted during banner
-      alternateBuffer: useAlternateBuffer,
-      incrementalRendering: useAlternateBuffer,
     },
   )
 
