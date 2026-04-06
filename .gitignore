@@ -10,6 +10,11 @@ dist/
 eval/runs/
 eval/datasets/humaneval.jsonl
 
+# PDF report tool temp files
+.cmdr_report_gen.py
+.cmdr_report_data.json
+*.pdf
+
 # Reference repos (not part of cmdr)
 claude-code-main/
 claw-code-main/

@@ -27,6 +27,7 @@ import { cronCreateTool, cronListTool, cronDeleteTool } from './cron-tools.js'
 import { enterPlanModeTool, exitPlanModeTool } from './plan-tools.js'
 import { mcpListResourcesTool, mcpReadResourceTool } from './mcp-resource-tools.js'
 import { graphImpactTool, graphQueryTool, graphReviewTool } from './graph-tools.js'
+import { pdfReportTool } from './pdf-report.js'
 
 export {
   bashTool, fileReadTool, fileWriteTool, fileEditTool,
@@ -40,6 +41,7 @@ export {
   enterPlanModeTool, exitPlanModeTool,
   mcpListResourcesTool, mcpReadResourceTool,
   graphImpactTool, graphQueryTool, graphReviewTool,
+  pdfReportTool,
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,6 +57,7 @@ export const BUILT_IN_TOOLS: ToolDefinition<any>[] = [
   enterPlanModeTool, exitPlanModeTool,
   mcpListResourcesTool, mcpReadResourceTool,
   graphImpactTool, graphQueryTool, graphReviewTool,
+  pdfReportTool,
 ]
 
 export function registerBuiltInTools(registry: ToolRegistry): void {
