@@ -17,6 +17,32 @@
 
 **cmdr** is a local-first AI coding assistant that runs entirely on your machine using [Ollama](https://ollama.ai). No API keys, no cloud, no data leaves your laptop.
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/welcome.png" alt="cmdr on npm — 1,800+ weekly downloads" width="700">
+  <br>
+  <em>Published on npm with 1,800+ weekly downloads</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/interactive-repl.png" alt="Interactive model picker" width="700">
+  <br>
+  <em>Interactive model picker — choose from your locally available Ollama models on startup</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/tool-calling.png" alt="Welcome banner and session dashboard" width="700">
+  <br>
+  <em>Session dashboard with model info, permission mode, status bar, and operator boot sequence</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/status-bar.png" alt="Context window usage breakdown" width="700">
+  <br>
+  <em>Real-time context window tracking — see token usage, remaining capacity, and per-component breakdown</em>
+</p>
+
 ## Features
 
 - **Local-first** — powered by Ollama, all inference runs on your hardware
