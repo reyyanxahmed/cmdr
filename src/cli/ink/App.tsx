@@ -120,6 +120,7 @@ export interface InkAppProps {
   autoSaver: DebouncedSaver
   version?: string
   gitBranch?: string
+  welcomeBanner?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +200,12 @@ export default function App(props: InkAppProps): React.ReactElement {
   const { exit } = useApp()
 
   const [state, setState] = useState<ReplState>('idle')
-  const [outputLines, setOutputLines] = useState<OutputLine[]>([])
+  const [outputLines, setOutputLines] = useState<OutputLine[]>(() => {
+    if (props.welcomeBanner) {
+      return props.welcomeBanner.split('\n').map(text => ({ id: nextId(), text }))
+    }
+    return []
+  })
   const [historyScrollOffset, setHistoryScrollOffset] = useState(0)
   const [spinnerText, setSpinnerText] = useState('')
   const [approval, setApproval] = useState<ApprovalRequest | null>(null)
@@ -252,7 +258,6 @@ export default function App(props: InkAppProps): React.ReactElement {
   }, [appendLines])
 
   const terminalRows = process.stdout.rows || 42
-  const hasTranscript = outputLines.length > 0 || state !== 'idle'
   const reservedRows = state === 'idle' ? 9 : state === 'waiting_approval' ? 13 : 6
   const historyWindowSize = Math.max(8, terminalRows - reservedRows)
 
@@ -1204,7 +1209,7 @@ export default function App(props: InkAppProps): React.ReactElement {
   // ---------------------------------------------------------------------------
 
   return (
-    <Box flexDirection="column" height={hasTranscript ? terminalRows : undefined}>
+    <Box flexDirection="column" height={terminalRows}>
       {/* Transcript viewport */}
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
         {visibleOutputLines.map((line) => (
