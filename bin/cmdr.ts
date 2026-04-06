@@ -9,10 +9,11 @@
 
 import { parseArgs, printHelp } from '../src/cli/args.js'
 import { startRepl } from '../src/cli/repl.js'
-import { GREEN, PURPLE, DIM, renderError, WHITE, CYAN, BRIGHT } from '../src/cli/theme.js'
+import { GREEN, PURPLE, DIM, renderError, CYAN } from '../src/cli/theme.js'
 import { OllamaAdapter } from '../src/llm/ollama.js'
 import { checkForUpdate } from '../src/cli/update-checker.js'
 import * as readline from 'readline'
+import chalk from 'chalk'
 import { createRequire } from 'module'
 
 const require = createRequire(import.meta.url)
@@ -57,21 +58,34 @@ function promptModelSelection(models: string[]): Promise<string> {
 
     const renderMenu = (): void => {
       clearRendered()
+      const menuWidth = process.stdout.columns || 80
+      const maxModelWidth = Math.max(14, menuWidth - 24)
+      const compact = (value: string): string => {
+        if (value.length <= maxModelWidth) return value
+        return `${value.slice(0, Math.max(1, maxModelWidth - 3))}...`
+      }
 
       const lines: string[] = [
         '',
-        `  ${PURPLE.bold('Select a model')}`,
-        `  ${DIM('Use ↑/↓ to navigate, Enter to confirm')}`,
+        `  ${PURPLE.bold('Model Matrix')}`,
+        `  ${DIM('Use ↑/↓ to target, Enter to initialize')}`,
         '',
       ]
 
       for (let i = 0; i < models.length; i++) {
         const isActive = i === selected
         const isRecommended = isRecommendedModel(models[i])
-        const pointer = isActive ? CYAN('❯') : DIM(' ')
+        const pointer = isActive ? CYAN.bold('▶') : DIM('·')
         const ordinal = DIM(`${String(i + 1).padStart(2, ' ')}.`)
-        const modelLabel = isActive ? CYAN.bold(models[i]) : DIM(models[i])
-        const recommendation = isRecommended ? ` ${GREEN('●')} ${DIM('recommended')}` : ''
+        const modelName = compact(models[i])
+        const modelLabel = isActive
+          ? chalk.bgHex('#11303A').hex('#B7FFE3').bold(` ${modelName} `)
+          : DIM(modelName)
+        const recommendation = isRecommended
+          ? isActive
+            ? ` ${GREEN('●')} ${DIM('recommended')}`
+            : ` ${DIM('· recommended')}`
+          : ''
         lines.push(`  ${pointer} ${ordinal} ${modelLabel}${recommendation}`)
       }
 
