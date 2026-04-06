@@ -126,36 +126,36 @@ export const TOOL_CANCELLED = DIM('⊘')
 // ---------------------------------------------------------------------------
 
 const CMDR_LOGO_LARGE = [
-  '   ________  ___  ___  ________  ________ ',
-  '  |\\   ____\\|\\  \\|\\  \\|\\   __  \\|\\   __  \\',
-  '  \\ \\  \\___|\\ \\  \\\\  \\ \\  \\|\\  \\ \\  \\|\\  \\',
-  '   \\ \\  \\    \\ \\   __  \\ \\   _  _\\ \\   _  _\\',
-  '    \\ \\  \\____\\ \\  \\ \\  \\ \\  \\\\  \\\\ \\  \\\\  \\|',
-  '     \\ \\_______\\ \\__\\ \\__\\ \\__\\ _\\\\ \\__\\ _\\',
-  '      \\|_______|\\|__|\\|__|\\|__|\\|__|\\|__|\\|__|\\|__|',
+  '   █████████   ██████   ██████  ██████████    ██████████',
+  '  ███░░░░░███ ░░██████ ██████  ░░███░░░░░███ ░░███░░░░░███',
+  ' ███     ░░░   ░███░█████░███   ░███    ░███  ░███    ░███',
+  '░███           ░███░░███ ░███   ░███    ░███  ░██████████',
+  '░███    █████  ░███ ░░░  ░███   ░███    ░███  ░███░░░░███',
+  '░░███  ░░███   ░███      ░███   ░███    ███░  ░███   ░███',
+  ' ░░█████████   █████     █████  ██████████░   █████   █████',
+  '  ░░░░░░░░░   ░░░░░     ░░░░░  ░░░░░░░░░░    ░░░░░   ░░░░░',
 ]
 
 const CMDR_LOGO_COMPACT = [
-  '  ██████╗███╗   ███╗██████╗ ██████╗',
-  ' ██╔════╝████╗ ████║██╔══██╗██╔══██╗',
-  ' ██║     ██╔████╔██║██║  ██║██████╔╝',
-  ' ██║     ██║╚██╔╝██║██║  ██║██╔══██╗',
-  ' ╚██████╗██║ ╚═╝ ██║██████╔╝██║  ██║',
-  '  ╚═════╝╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝',
+  ' ██████╗███╗   ███╗██████╗ ██████╗',
+  '██╔════╝████╗ ████║██╔══██╗██╔══██╗',
+  '██║     ██╔████╔██║██║  ██║██████╔╝',
+  '██║     ██║╚██╔╝██║██║  ██║██╔══██╗',
+  '╚██████╗██║ ╚═╝ ██║██████╔╝██║  ██║',
+  ' ╚═════╝╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝',
 ]
 
 const CMDR_LOGO_TINY = [
-  '   CMDR',
+  ' CMDR',
 ]
 
-const LOGO_COLORS: ChalkInstance[] = [
-  GREEN.bold,
-  GREEN.bold,
-  PURPLE.bold,
-  PURPLE.bold,
-  CYAN.bold,
-  CYAN.bold,
-  GREEN_DIM,
+const LOGO_GRADIENT_HEX = [
+  '#61A5FA',
+  '#7D8DFE',
+  '#9D8AF9',
+  '#C980D5',
+  '#E57CB3',
+  '#F47A9C',
 ]
 
 function stripAnsi(value: string): string {
@@ -178,21 +178,37 @@ function padAnsi(value: string, width: number): string {
   return value + ' '.repeat(padding)
 }
 
+function fitAnsi(value: string, width: number): string {
+  const truncated = visibleWidth(value) > width
+    ? truncatePlain(stripAnsi(value), width)
+    : value
+  return padAnsi(truncated, width)
+}
+
 function getLogoForWidth(width: number): string[] {
   if (width >= 70) return CMDR_LOGO_LARGE
   if (width >= 50) return CMDR_LOGO_COMPACT
   return CMDR_LOGO_TINY
 }
 
+function colorizeLineGradient(line: string): string {
+  const chars = Array.from(line)
+  const maxIndex = Math.max(1, chars.length - 1)
+
+  return chars.map((char, idx) => {
+    if (char === ' ') return char
+    const gradientIndex = Math.round((idx / maxIndex) * (LOGO_GRADIENT_HEX.length - 1))
+    return chalk.hex(LOGO_GRADIENT_HEX[gradientIndex]).bold(char)
+  }).join('')
+}
+
 function colorizeLogo(logoLines: string[]): string[] {
-  return logoLines.map((line, idx) => {
-    const color = LOGO_COLORS[Math.min(idx, LOGO_COLORS.length - 1)]
-    return color(line)
-  })
+  return logoLines.map((line) => colorizeLineGradient(line))
 }
 
 export function renderBanner(): string {
-  const logo = colorizeLogo(CMDR_LOGO_COMPACT)
+  const width = Math.min(process.stdout.columns || 100, 120)
+  const logo = colorizeLogo(getLogoForWidth(width))
   return ['', ...logo, ''].join('\n')
 }
 
@@ -218,20 +234,19 @@ export interface WelcomeOptions {
 }
 
 export function renderWelcome(model: string, projectInfo: string, version = '0.0.0', opts?: WelcomeOptions): string {
-  const terminalWidth = Math.min(process.stdout.columns || 100, 120)
-  const metadataValueWidth = Math.max(8, terminalWidth - 18)
+  const terminalWidth = Math.max(42, Math.min(process.stdout.columns || 100, 120))
+  const metadataLabelWidth = 10
+  const metadataPrefixWidth = 2 + metadataLabelWidth + 2
+  const metadataValueWidth = Math.max(8, terminalWidth - metadataPrefixWidth)
   const shortDir = (opts?.cwd || process.cwd()).replace(/^\/Users\/\w+/, '~')
   const logoLines = colorizeLogo(getLogoForWidth(terminalWidth))
 
-  const modelText = truncatePlain(model, metadataValueWidth)
-  const projectText = truncatePlain(projectInfo, metadataValueWidth)
-  const dirText = truncatePlain(shortDir, metadataValueWidth)
-  const branchText = opts?.gitBranch ? truncatePlain(opts.gitBranch, metadataValueWidth) : ''
+  const branchText = opts?.gitBranch ? opts.gitBranch : ''
 
   const mode = opts?.permissionMode || 'normal'
-  const modeText = mode === 'yolo' ? YELLOW(mode)
-    : mode === 'strict' ? RED(mode)
-      : GREEN(mode)
+  const modeColor = mode === 'yolo' ? YELLOW
+    : mode === 'strict' ? RED
+      : GREEN
 
   const agentCount = opts?.agentCount ?? 0
   const pluginCount = opts?.pluginCount ?? 0
@@ -241,55 +256,74 @@ export function renderWelcome(model: string, projectInfo: string, version = '0.0
 
   const lines: string[] = ['']
 
+  if (terminalWidth >= 70) {
+    lines.push('')
+  }
+
   for (const logoLine of logoLines) {
     lines.push(`  ${logoLine}`)
   }
 
   lines.push('')
+  if (terminalWidth >= 70) {
+    lines.push('')
+  }
   lines.push(`  ${WHITE.bold('cmdr CLI')} ${DIM(`v${version}`)}`)
-  lines.push(`  ${DIM('─'.repeat(Math.max(16, Math.min(terminalWidth - 6, 38))))}`)
+  lines.push(`  ${DIM('─'.repeat(Math.max(22, Math.min(terminalWidth - 6, 56))))}`)
   lines.push('')
 
-  const metadataRow = (label: string, value: string): void => {
-    lines.push(`  ${DIM(label.padEnd(12))}: ${value}`)
+  const metadataRow = (label: string, value: string, color: ChalkInstance = WHITE): void => {
+    const compact = truncatePlain(value, metadataValueWidth)
+    lines.push(`  ${DIM(label.padEnd(metadataLabelWidth))}: ${color(compact)}`)
   }
 
-  metadataRow('Model', GREEN(modelText))
-  metadataRow('Project', CYAN(projectText))
-  metadataRow('Permission', modeText)
+  metadataRow('Model', model, GREEN)
+  metadataRow('Project', projectInfo, CYAN)
+  metadataRow('Mode', mode, modeColor)
 
   if (branchText) {
-    metadataRow('Branch', PURPLE(branchText))
+    metadataRow('Branch', branchText, PURPLE)
   }
 
-  metadataRow('Directory', WHITE(dirText))
+  metadataRow('Directory', shortDir, WHITE)
 
   if (opts?.teamName) {
     const teamAgents = opts.teamAgentCount ?? 0
     const teamSummary = `${opts.teamName} (${teamAgents} ${teamAgents === 1 ? 'agent' : 'agents'})`
-    metadataRow('Team', CYAN(truncatePlain(teamSummary, metadataValueWidth)))
+    metadataRow('Team', teamSummary, CYAN)
   }
 
   if (opts?.resumedSession) {
-    metadataRow('Session', PURPLE(truncatePlain(opts.resumedSession, metadataValueWidth)))
+    metadataRow('Session', opts.resumedSession, PURPLE)
   }
 
   lines.push('')
-  metadataRow('Loaded', WHITE(`${agentCount} ${agentCount === 1 ? 'agent' : 'agents'} · ${pluginCount} ${pluginCount === 1 ? 'plugin' : 'plugins'} · ${mcpServerCount} MCP`))
-  metadataRow('Workspace', DIM(`${customCmdCount} ${customCmdCount === 1 ? 'command' : 'commands'} · ${cmdrMdLines} CMDR.md lines`))
+  metadataRow('Agents', String(agentCount), WHITE)
+  metadataRow('Plugins', String(pluginCount), WHITE)
+  metadataRow('MCP', String(mcpServerCount), WHITE)
+  metadataRow('Workspace', `${customCmdCount} ${customCmdCount === 1 ? 'command' : 'commands'} · ${cmdrMdLines} CMDR.md lines`, DIM)
   lines.push('')
 
-  const tipsInnerWidth = Math.max(10, Math.min(94, terminalWidth - 6))
+  const tipsInnerWidth = Math.max(18, Math.min(94, terminalWidth - 6))
   const tipsCompact = terminalWidth < 74
-  const tipsHeader = GREEN.bold('Initialize Sequence')
-  const tipOne = tipsCompact ? `${WHITE('1.')} ${DIM('Input query to invoke assistant')}` : `${WHITE('1.')} ${DIM('Input query to invoke coding assistant')}`
-  const tipTwo = tipsCompact ? `${WHITE('2.')} ${commandText('/help')} ${DIM('for configs')}` : `${WHITE('2.')} ${commandText('/help')} ${DIM('to override params and bindings')}`
-  const tipThree = tipsCompact ? `${WHITE('3.')} ${DIM('@agent <task> for runtime')}` : `${WHITE('3.')} ${DIM('@agent <task> to load specialized runtime')}`
+  const tipsHeader = GREEN.bold('Operator Boot Sequence')
+  const tipOneBody = tipsCompact
+    ? 'Initialize objective'
+    : 'Initialize objective: define target artifact, bug, or refactor'
+  const tipTwoBody = tipsCompact
+    ? 'Invoke /help or /model'
+    : 'Invoke control plane: /help, /model, /permissions'
+  const tipThreeBody = tipsCompact
+    ? 'Override via CMDR.md or @agent'
+    : 'Override sys-prompt via CMDR.md or dispatch @agent <task>'
+  const tipOne = `${WHITE('1.')} ${DIM(tipOneBody)}`
+  const tipTwo = `${WHITE('2.')} ${DIM(tipTwoBody)}`
+  const tipThree = `${WHITE('3.')} ${DIM(tipThreeBody)}`
 
   if (terminalWidth >= 58) {
     const top = `  ${GREEN_DIM(`╭${'─'.repeat(tipsInnerWidth)}╮`)}`
     const bottom = `  ${GREEN_DIM(`╰${'─'.repeat(tipsInnerWidth)}╯`)}`
-    const tipLine = (content: string): string => `  ${GREEN_DIM('│')}${padAnsi(` ${content}`, tipsInnerWidth)}${GREEN_DIM('│')}`
+    const tipLine = (content: string): string => `  ${GREEN_DIM('│')}${fitAnsi(` ${content}`, tipsInnerWidth)}${GREEN_DIM('│')}`
 
     lines.push(top)
     lines.push(tipLine(tipsHeader))
@@ -298,10 +332,11 @@ export function renderWelcome(model: string, projectInfo: string, version = '0.0
     lines.push(tipLine(tipThree))
     lines.push(bottom)
   } else {
-    lines.push(`  ${tipsHeader}`)
-    lines.push(`  ${tipOne}`)
-    lines.push(`  ${tipTwo}`)
-    lines.push(`  ${tipThree}`)
+    const compactWidth = Math.max(10, terminalWidth - 4)
+    lines.push(`  ${truncatePlain(stripAnsi(tipsHeader), compactWidth)}`)
+    lines.push(`  ${truncatePlain(stripAnsi(tipOne), compactWidth)}`)
+    lines.push(`  ${truncatePlain(stripAnsi(tipTwo), compactWidth)}`)
+    lines.push(`  ${truncatePlain(stripAnsi(tipThree), compactWidth)}`)
   }
 
   const hintLeft = DIM('Shift+Tab to accept edits')
