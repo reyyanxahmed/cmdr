@@ -1,13 +1,13 @@
 <div align="center">
 
-```
+<pre>
    ██████╗███╗   ███╗██████╗ ██████╗ 
   ██╔════╝████╗ ████║██╔══██╗██╔══██╗
   ██║     ██╔████╔██║██║  ██║██████╔╝
   ██║     ██║╚██╔╝██║██║  ██║██╔══██╗
   ╚██████╗██║ ╚═╝ ██║██████╔╝██║  ██║
    ╚═════╝╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝
-```
+</pre>
 
 **Local-first, multi-agent AI coding in your terminal.**
 
@@ -15,7 +15,7 @@
 [![npm](https://img.shields.io/npm/v/cmdr-agent)](https://www.npmjs.com/package/cmdr-agent)
 [![npm downloads](https://img.shields.io/npm/dw/cmdr-agent)](https://www.npmjs.com/package/cmdr-agent)
 [![GitHub stars](https://img.shields.io/github/stars/reyyanxahmed/cmdr?style=social)](https://github.com/reyyanxahmed/cmdr)
-[![Lines of Code](https://tokei.rs/b1/github/reyyanxahmed/cmdr?category=code&style=flat)](https://github.com/reyyanxahmed/cmdr)
+[![Lines of Code](https://img.shields.io/tokei/lines/github/reyyanxahmed/cmdr?style=flat)](https://github.com/reyyanxahmed/cmdr)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 [Getting Started](docs/getting-started.md) · [Usage](docs/usage.md) · [Configuration](docs/configuration.md) · [Benchmarks](docs/benchmarks.md)
