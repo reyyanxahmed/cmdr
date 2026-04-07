@@ -17,16 +17,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cloc jq
+
       - name: Calculate LOC from tracked files
         id: loc
         run: |
-          npm install -g cloc
           CODE_LINES=$(git ls-files | cloc --json --quiet --list-file=- | jq -r '.SUM.code')
+          if [ -z "$CODE_LINES" ] || [ "$CODE_LINES" = "null" ]; then
+            CODE_LINES=0
+          fi
           echo "code_lines=$CODE_LINES" >> "$GITHUB_OUTPUT"
 
-      - name: Write badge JSON
+      - name: Detect LOC changes
+        id: check
         run: |
           mkdir -p .github/badges
+          CURRENT_LINES=""
+          if [ -f .github/badges/loc.json ]; then
+            CURRENT_LINES=$(jq -r '.message // empty' .github/badges/loc.json)
+          fi
+          if [ "$CURRENT_LINES" = "${{ steps.loc.outputs.code_lines }}" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write badge JSON
+        if: steps.check.outputs.changed == 'true'
+        run: |
           cat > .github/badges/loc.json <<EOF
           {
             "schemaVersion": 1,
@@ -37,11 +58,8 @@ jobs:
           EOF
 
       - name: Commit updated badge
+        if: steps.check.outputs.changed == 'true'
         run: |
-          if git diff --quiet -- .github/badges/loc.json; then
-            echo "No LOC changes detected."
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .github/badges/loc.json
