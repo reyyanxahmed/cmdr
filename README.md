@@ -1,10 +1,4 @@
-# cmdr
-
-[![CI](https://github.com/reyyanxahmed/cmdr/actions/workflows/ci.yml/badge.svg)](https://github.com/reyyanxahmed/cmdr/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/cmdr-agent)](https://www.npmjs.com/package/cmdr-agent)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-
-> Open-source, Ollama-native, multi-agent coding tool for your terminal.
+<div align="center">
 
 ```
    ██████╗███╗   ███╗██████╗ ██████╗ 
@@ -15,7 +9,38 @@
    ╚═════╝╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝
 ```
 
-**cmdr** is a local-first AI coding assistant that runs entirely on your machine using [Ollama](https://ollama.ai). No API keys, no cloud, no data leaves your laptop.
+**Local-first, multi-agent AI coding in your terminal.**
+
+[![CI](https://github.com/reyyanxahmed/cmdr/actions/workflows/ci.yml/badge.svg)](https://github.com/reyyanxahmed/cmdr/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/cmdr-agent)](https://www.npmjs.com/package/cmdr-agent)
+[![npm downloads](https://img.shields.io/npm/dw/cmdr-agent)](https://www.npmjs.com/package/cmdr-agent)
+[![GitHub stars](https://img.shields.io/github/stars/reyyanxahmed/cmdr?style=social)](https://github.com/reyyanxahmed/cmdr)
+[![Lines of Code](https://tokei.rs/b1/github/reyyanxahmed/cmdr?category=code&style=flat)](https://github.com/reyyanxahmed/cmdr)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+[Getting Started](docs/getting-started.md) · [Usage](docs/usage.md) · [Configuration](docs/configuration.md) · [Benchmarks](docs/benchmarks.md)
+
+</div>
+
+---
+
+## What is cmdr?
+
+**cmdr** is an AI coding assistant that runs **entirely on your machine** using [Ollama](https://ollama.ai). No API keys, no cloud, no data leaves your laptop.
+
+```bash
+npm install -g cmdr-agent
+cmdr
+```
+
+## Contents
+
+- [Screenshots](#screenshots)
+- [Highlights](#highlights)
+- [Quick Start](#quick-start)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Screenshots
 
@@ -24,6 +49,10 @@
   <br>
   <em>Published on npm with 1,800+ weekly downloads</em>
 </p>
+
+<details>
+<summary><strong>More screenshots</strong></summary>
+<br>
 
 <p align="center">
   <img src="screenshots/interactive-repl.png" alt="Interactive model picker" width="700">
@@ -43,236 +72,58 @@
   <em>Real-time context window tracking — see token usage, remaining capacity, and per-component breakdown</em>
 </p>
 
-## Features
+</details>
 
-- **Local-first** — powered by Ollama, all inference runs on your hardware
-- **Multi-agent architecture** — extensible agent/runner pipeline with tool calling
-- **Interactive REPL** — streaming output, markdown rendering, AMOLED-friendly theme
-- **Built-in tools** — file read/write/edit, glob, grep, bash, git diff/log/commit/branch, web fetch, think
-- **HITL permissions** — approve, deny, or always-allow each tool call
-- **Context compaction** — multi-stage strategy keeps conversations within context limits
-- **Session persistence** — auto-save, resume, and `--continue` flag
-- **Token cost tracking** — `/cost` command shows per-session usage breakdown
-- **Undo** — `/undo` reverts file changes made by the agent
-- **Multi-agent teams** — built-in presets: code review, full-stack, security audit
-- **Plugin system** — load custom plugins from npm modules or local paths
-- **MCP client** — connect to Model Context Protocol servers for extended tools
-- **Project awareness** — auto-detects language, framework, and reads `CMDR.md` instructions
-- **Whimsical UX** — 150+ spinner verbs, past-tense summaries, collapsed tool output
+## Highlights
+
+| | Feature | |
+|---|---|---|
+| 🔒 | **Local-first** | All inference on your hardware via Ollama |
+| 🤖 | **Multi-agent teams** | Code review, full-stack, security audit presets |
+| 🛠 | **13 built-in tools** | Files, grep, glob, bash, git, web fetch, think |
+| ✅ | **Human-in-the-loop** | Approve, deny, or always-allow each tool call |
+| 🧠 | **Context compaction** | Multi-stage strategy keeps long conversations in bounds |
+| 🔌 | **Plugins & MCP** | Extend with npm modules or Model Context Protocol servers |
+| 💾 | **Session persistence** | Auto-save, resume, `--continue` |
+| ↩️ | **Undo** | `/undo` reverts any file change the agent made |
+| 📊 | **Token tracking** | `/cost` for per-session usage breakdown |
+| 📁 | **Project awareness** | Reads `CMDR.md` for project-specific instructions |
 
 ## Quick Start
 
 ```bash
-# Install Ollama (https://ollama.ai)
+# 1. Install Ollama — https://ollama.ai
 ollama pull qwen3-coder:latest
 
-# Install cmdr
+# 2. Install cmdr
 npm install -g cmdr-agent
 
-# Start coding
+# 3. Go
 cmdr
 ```
 
-## Usage
-
 ```bash
-cmdr                             # Interactive REPL
-cmdr "fix the failing tests"     # Single prompt, then exit
-cmdr -m llama3.1:8b              # Use a specific model
-cmdr -c                          # Continue most recent session
-cmdr --resume <session-id>       # Resume a specific session
-cmdr --team review               # Multi-agent code review team
-cmdr --cwd /path/to/project      # Override working directory
+# One-shot mode
+cmdr "fix the failing tests"
+
+# Pick a model
+cmdr -m llama3.1:8b
+
+# Multi-agent review
+cmdr --team review
 ```
 
-### CLI Flags
+## Documentation
 
-| Flag | Description |
+| Page | Description |
 |------|-------------|
-| `-m, --model <name>` | Set the Ollama model |
-| `-u, --ollama-url <url>` | Ollama server URL |
-| `-p, --prompt <text>` | Run a single prompt and exit |
-| `-r, --resume <id>` | Resume a previous session |
-| `-c, --continue` | Resume most recent session for this directory |
-| `-t, --team <preset>` | Run with a multi-agent team (review, fullstack, security) |
-| `--cwd <path>` | Set working directory |
-| `--verbose` | Print full tool output |
-| `--dangerously-skip-permissions` | Auto-approve all tool calls |
-| `--max-turns <n>` | Limit agent tool-call turns |
-| `-h, --help` | Show help |
-| `-v, --version` | Show version |
-
-### Slash Commands
-
-| Command | Description |
-|---------|-------------|
-| `/help` | Show available commands |
-| `/model <name>` | Switch model |
-| `/models` | List available Ollama models |
-| `/status` | Show session info |
-| `/context` | Show context window usage |
-| `/compact` | Manually trigger compaction |
-| `/cost` | Show token usage breakdown |
-| `/undo` | Revert the last file change made by the agent |
-| `/diff` | Show git diff |
-| `/team [preset]` | Switch to a multi-agent team |
-| `/agents` | Show active agents and status |
-| `/tasks` | Show task queue status |
-| `/config` | View configuration |
-| `/plugin list` | List loaded plugins |
-| `/mcp list` | List MCP server connections |
-| `/session save` | Save current session |
-| `/session resume <id>` | Resume a session |
-| `/sessions` | List saved sessions |
-| `/permissions [mode]` | View/set permission mode |
-| `/init` | Create CMDR.md template |
-| `/clear` | Clear conversation |
-| `/quit` | Exit |
-
-### Built-in Tools
-
-| Tool | Description |
-|------|-------------|
-| `bash` | Execute shell commands with timeout and error handling |
-| `file_read` | Read file contents with offset/limit support |
-| `file_write` | Create or overwrite files (auto-creates directories) |
-| `file_edit` | Surgical string replacement in files |
-| `grep` | Regex search (uses ripgrep when available) |
-| `glob` | Find files by pattern |
-| `git_diff` | Show working tree or staged changes |
-| `git_log` | Recent commit history |
-| `git_commit` | Stage and commit files |
-| `git_branch` | Create, switch, or list branches |
-| `web_fetch` | Fetch a URL (SSRF-protected) |
-| `ask_user` | Ask the user a question |
-| `think` | Extended reasoning scratchpad (no side effects) |
-
-## Multi-Agent Teams
-
-cmdr supports multi-agent collaboration with built-in presets:
-
-```bash
-cmdr --team review      # Coder + Reviewer
-cmdr --team fullstack   # Planner + Frontend + Backend + Reviewer
-cmdr --team security    # Security Scanner + Reviewer
-```
-
-Or switch teams mid-session with `/team review`.
-
-Each agent has its own system prompt, tool access, and optional model. Results flow through shared memory so downstream agents see what upstream agents produced.
-
-## Plugins & MCP
-
-Load plugins from npm modules or local paths in `~/.cmdr/config.toml`:
-
-```toml
-plugins = ["cmdr-plugin-prettier", "./my-local-plugin.js"]
-
-[[mcp.servers]]
-name = "my-tools"
-url = "http://localhost:8080"
-```
-
-Plugins can provide tools, slash commands, and lifecycle hooks (beforePrompt, afterResponse, onError, etc.).
-
-MCP servers are discovered via the `/tools` endpoint and their tools are registered with a `mcp_` prefix.
-
-## CMDR.md
-
-Create a `CMDR.md` file in your project root to give cmdr project-specific instructions:
-
-```markdown
-# CMDR Instructions
-
-## Project Overview
-A TypeScript web app using Next.js and Prisma.
-
-## Code Style
-- Use bun instead of npm
-- Prefer functional components with hooks
-- Always add JSDoc comments
-
-## Testing
-Run `vitest` after every change.
-
-## Rules
-- Never modify files in /core without asking
-- Always run linting before committing
-```
-
-You can also use `.cmdr/instructions.md` — both files are loaded and concatenated.
-
-## Permission Modes
-
-- **normal** (default) — read-only tools auto-approved, write/bash require confirmation
-- **yolo** — all tools auto-approved (use `--dangerously-skip-permissions`)
-- **strict** — all tools require approval (`/permissions strict`)
-
-## Configuration
-
-cmdr reads config from `~/.cmdr/config.toml` (user) and `.cmdr.toml` (project):
-
-```toml
-defaultModel = "qwen3-coder:latest"
-ollamaUrl = "http://localhost:11434"
-
-[spinner]
-speed = 150
-
-[telemetry]
-enabled = false   # opt-in local-only usage stats
-```
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CMDR_MODEL` | `qwen2.5-coder:14b` | Default model |
-| `CMDR_OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |
-
-## Benchmark Results
-
-### Custom Eval Suite (50 tasks, 4 tiers)
-
-| Model | Pass Rate | Score | Grade |
-|---|---|---|---|
-| qwen3-coder:latest (14B) | 42/50 (84%) | ~160/197 | **S** |
-
-Grade A at 38/50 (71.6%) after the v1.3.0 system prompt rewrite alone (+8 tasks, +19pp from v1.2). Verify script hardening pushed it to 42/50.
-
-### HumanEval (164 tasks, pass@1)
-
-| Model | pass@1 | Passed |
-|---|---|---|
-| minimax-m2.5:cloud | **95.7%** | 157/164 |
-
-All benchmarks run through cmdr's eval harness on local hardware (Ollama). No cloud inference for the custom eval suite.
-
-## Architecture
-
-```
-bin/cmdr.ts          CLI entry point
-src/
-  cli/               REPL, commands, args, spinner, theme, renderer
-  core/              Agent, AgentRunner, Orchestrator, Team, presets, permissions
-  communication/     MessageBus, SharedMemory, TaskQueue
-  scheduling/        Semaphore, agent selection strategies
-  config/            Config loader, schema, telemetry
-  llm/               OllamaAdapter, model registry, token counter
-  plugins/           PluginManager, McpClient
-  session/           SessionManager, compaction, persistence, cost tracker, undo
-  tools/             ToolRegistry, ToolExecutor, built-in tools
-```
-
-## Development
-
-```bash
-git clone https://github.com/reyyanxahmed/cmdr.git
-cd cmdr
-npm install
-npm run build
-node dist/bin/cmdr.js -m qwen3-coder:latest
-```
+| [Getting Started](docs/getting-started.md) | Installation, first run, verify |
+| [Usage](docs/usage.md) | CLI flags, slash commands, built-in tools |
+| [Multi-Agent Teams](docs/multi-agent.md) | Team presets and orchestration |
+| [Plugins & MCP](docs/plugins.md) | Plugin system and MCP integration |
+| [Configuration](docs/configuration.md) | Config files, env vars, permissions, CMDR.md |
+| [Benchmarks](docs/benchmarks.md) | Eval suite and HumanEval results |
+| [Architecture](docs/architecture.md) | Project structure and development setup |
 
 ## Contributing
 
