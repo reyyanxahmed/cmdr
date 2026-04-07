@@ -1,0 +1,49 @@
+name: LOC Badge
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - .github/badges/loc.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-loc-badge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Calculate LOC from tracked files
+        id: loc
+        run: |
+          npm install -g cloc
+          CODE_LINES=$(git ls-files | cloc --json --quiet --list-file=- | jq -r '.SUM.code')
+          echo "code_lines=$CODE_LINES" >> "$GITHUB_OUTPUT"
+
+      - name: Write badge JSON
+        run: |
+          mkdir -p .github/badges
+          cat > .github/badges/loc.json <<EOF
+          {
+            "schemaVersion": 1,
+            "label": "lines of code",
+            "message": "${{ steps.loc.outputs.code_lines }}",
+            "color": "blue"
+          }
+          EOF
+
+      - name: Commit updated badge
+        run: |
+          if git diff --quiet -- .github/badges/loc.json; then
+            echo "No LOC changes detected."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/badges/loc.json
+          git commit -m "chore: update LOC badge"
+          git push
