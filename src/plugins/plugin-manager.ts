@@ -9,14 +9,27 @@ import type {
   ToolResult, SessionState, ToolDefinition, SlashCommand,
 } from '../core/types.js'
 import type { ToolRegistry } from '../tools/registry.js'
+import { isAbsolute, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 export class PluginManager {
   private plugins: CmdrPlugin[] = []
 
+  private resolvePluginSource(source: string, baseDir: string): string {
+    if (source.startsWith('file://')) return source
+
+    if (source.startsWith('.') || isAbsolute(source)) {
+      const absolutePath = isAbsolute(source) ? source : resolve(baseDir, source)
+      return pathToFileURL(absolutePath).href
+    }
+
+    return source
+  }
+
   /** Load a plugin from a module path or package name. */
-  async load(source: string): Promise<void> {
+  async load(source: string, baseDir = process.cwd()): Promise<void> {
     try {
-      const mod = await import(source)
+      const mod = await import(this.resolvePluginSource(source, baseDir))
       const plugin: CmdrPlugin = mod.default ?? mod
       if (!plugin.name) {
         throw new Error(`Plugin from "${source}" has no name`)

@@ -144,7 +144,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   const pluginManager = new PluginManager()
   for (const pluginSource of config.plugins) {
     try {
-      await pluginManager.load(pluginSource)
+      await pluginManager.load(pluginSource, cwd)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       console.log(`  ${DIM('⚠ Plugin load failed:')} ${msg}`)
@@ -272,7 +272,17 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   // Create agent
   const currentModel = options.model
-  const agentConfig = { ...SOLO_CODER, model: currentModel, systemPrompt } as AgentConfig & { maxTurns?: number; thinkingEnabled?: boolean; temperature?: number }
+  const allowedToolNames = Array.from(new Set([
+    ...(SOLO_CODER.tools ?? []),
+    ...toolRegistry.list().map(tool => tool.name),
+  ]))
+
+  const agentConfig = {
+    ...SOLO_CODER,
+    model: currentModel,
+    systemPrompt,
+    tools: allowedToolNames,
+  } as AgentConfig & { maxTurns?: number; thinkingEnabled?: boolean; temperature?: number }
   if (options.maxTurns) {
     agentConfig.maxTurns = options.maxTurns
   } else if (config.maxTurns) {
@@ -295,7 +305,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     toolRegistry,
     cwd,
     permissionManager,
-    { memoryManager },
+    { memoryManager, pluginManager },
   )
 
   // Wire graph context into agent if available
@@ -308,6 +318,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   // Emit session start event
   globalEventBus.emit('session:start', { sessionId: session.id ?? 'default' })
+  await pluginManager.runOnSessionStart(session.getState())
 
   let resumedSessionSummary: string | undefined
   let startupNotice: string | undefined
@@ -380,6 +391,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   if (options.initialPrompt) {
     await handleOneShot(options.initialPrompt, agent, session, currentModel, permissionManager, verbose, adapter, costTracker, undoManager, options.outputFormat)
     await doSave()
+    await pluginManager.runOnSessionEnd(session.getState())
 
     // Keep one-shot lifecycle consistent with interactive cleanup so process exits cleanly.
     taskScheduler.stop()
@@ -432,6 +444,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   // Cleanup
   taskScheduler.stop()
+  await pluginManager.runOnSessionEnd(session.getState())
   mcpClient.disconnect('crg')
   globalEventBus.emit('session:end', {
     sessionId: session.id ?? 'default',

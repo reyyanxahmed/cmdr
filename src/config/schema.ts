@@ -5,9 +5,32 @@
 import { z } from 'zod'
 
 export const McpServerSchema = z.object({
-  name: z.string(),
-  url: z.string().url(),
+  name: z.string().min(1),
+  url: z.string().url().optional(),
   apiKey: z.string().optional(),
+  transport: z.enum(['http', 'stdio', 'sse']).optional(),
+  command: z.string().min(1).optional(),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string()).optional(),
+  cwd: z.string().optional(),
+}).superRefine((server, ctx) => {
+  const transport = server.transport ?? (server.command ? 'stdio' : 'http')
+
+  if (transport === 'stdio' && !server.command) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'MCP stdio transport requires "command".',
+      path: ['command'],
+    })
+  }
+
+  if ((transport === 'http' || transport === 'sse') && !server.url) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `MCP ${transport} transport requires "url".`,
+      path: ['url'],
+    })
+  }
 })
 
 export const CmdrConfigSchema = z.object({
@@ -23,6 +46,9 @@ export const CmdrConfigSchema = z.object({
     allowFileWrite: z.boolean().default(true),
     allowNetwork: z.boolean().default(false),
     sandboxDir: z.string().optional(),
+    allow: z.array(z.string()).optional(),
+    deny: z.array(z.string()).optional(),
+    ask: z.array(z.string()).optional(),
   }).default({}),
   mcp: z.object({
     servers: z.array(McpServerSchema).default([]),

@@ -45,6 +45,7 @@ export function createSubagentTool(
         parentModel,
         adapter,
         parentToolRegistry,
+        context.metadata,
       )
       return { data: result.output, isError: false }
     },

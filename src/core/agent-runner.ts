@@ -21,6 +21,7 @@ import type { GraphContextProvider } from './graph-context.js'
 import { attemptRepair, type RepairContext } from '../llm/repair/tool-repair.js'
 import { shouldRetry, buildCorrectionMessages, type RetryPolicy } from '../llm/repair/retry-policy.js'
 import { detectToolCallLeakage } from '../llm/validation/tool-call-schema.js'
+import type { PluginManager } from '../plugins/plugin-manager.js'
 
 // ---------------------------------------------------------------------------
 // Safe parallel tools — read-only tools that can safely run concurrently
@@ -44,6 +45,23 @@ const SAFE_PARALLEL_TOOLS = new Set([
 const GRAPH_UPDATE_TRIGGERS = new Set([
   'file_write', 'file_edit', 'git_commit',
 ])
+
+type PluginHookRunner = Pick<PluginManager, 'runBeforePrompt' | 'runAfterResponse' | 'runOnError'>
+
+function getPluginHookRunner(metadata: Readonly<Record<string, unknown>> | undefined): PluginHookRunner | undefined {
+  const candidate = metadata?.pluginManager as Partial<PluginHookRunner> | undefined
+  if (!candidate) return undefined
+
+  if (
+    typeof candidate.runBeforePrompt === 'function'
+    && typeof candidate.runAfterResponse === 'function'
+    && typeof candidate.runOnError === 'function'
+  ) {
+    return candidate as PluginHookRunner
+  }
+
+  return undefined
+}
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -155,6 +173,7 @@ export class AgentRunner {
     callbacks: RunCallbacks = {},
   ): AsyncGenerator<StreamEvent> {
     const conversationMessages: LLMMessage[] = [...initialMessages]
+    const pluginHooks = getPluginHookRunner(this.options.metadata)
 
     let totalUsage: TokenUsage = ZERO_USAGE
     const allToolCalls: ToolCallRecord[] = []
@@ -218,7 +237,7 @@ export class AgentRunner {
           ? filterToolsByIntent(intent, fullToolDefs)
           : fullToolDefs
 
-        const turnChatOptions: LLMChatOptions = {
+        let turnChatOptions: LLMChatOptions = {
           model: this.options.model,
           tools: turnTools.length > 0 ? turnTools : undefined,
           maxTokens: this.options.maxTokens,
@@ -228,11 +247,21 @@ export class AgentRunner {
           thinkingEnabled: this.options.thinkingEnabled,
         }
 
+        if (pluginHooks) {
+          try {
+            turnChatOptions = await pluginHooks.runBeforePrompt(turnChatOptions)
+          } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err))
+            await pluginHooks.runOnError(error)
+          }
+        }
+
         // Step 1: Stream from LLM — yield text tokens in real-time
         const turnContent: ContentBlock[] = []
         let turnText = ''
         const pendingToolUse: ToolUseBlock[] = []
         let turnUsage: TokenUsage = ZERO_USAGE
+        let turnResponse: LLMResponse | null = null
 
         // Emit llm:request event
         globalEventBus.emit('llm:request', { model: this.options.model, messageCount: conversationMessages.length })
@@ -248,12 +277,26 @@ export class AgentRunner {
             pendingToolUse.push(block)
             yield { type: 'tool_use', data: block }
           } else if (event.type === 'done') {
-            const response = event.data as LLMResponse
-            turnUsage = response.usage
+            turnResponse = event.data as LLMResponse
+            turnUsage = turnResponse.usage
           } else if (event.type === 'error') {
             globalEventBus.emit('llm:error', { model: this.options.model, error: String((event.data as Error).message) })
             yield event
             return
+          }
+        }
+
+        if (pluginHooks && turnResponse) {
+          try {
+            const modifiedResponse = await pluginHooks.runAfterResponse(turnResponse)
+            turnResponse = modifiedResponse
+            turnUsage = modifiedResponse.usage
+            turnText = extractText(modifiedResponse.content)
+            pendingToolUse.length = 0
+            pendingToolUse.push(...extractToolUseBlocks(modifiedResponse.content))
+          } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err))
+            await pluginHooks.runOnError(error)
           }
         }
 
@@ -493,6 +536,9 @@ export class AgentRunner {
       }
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
+      if (pluginHooks) {
+        await pluginHooks.runOnError(error)
+      }
       yield { type: 'error', data: error }
       return
     }

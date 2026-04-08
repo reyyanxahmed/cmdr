@@ -34,6 +34,7 @@ export class AgentExecutor {
     parentModel: string,
     adapter: LLMAdapter,
     parentToolRegistry: ToolRegistry,
+    metadata?: Readonly<Record<string, unknown>>,
   ): Promise<SubagentResult> {
     // 1. Create a restricted ToolRegistry with only the agent's allowed tools
     const agentTools = new ToolRegistry()
@@ -54,6 +55,9 @@ export class AgentExecutor {
       },
       adapter,
       agentTools,
+      undefined,
+      undefined,
+      metadata,
     )
 
     // 3. Run to completion, collecting all text output
