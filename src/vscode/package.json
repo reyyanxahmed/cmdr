@@ -2,13 +2,14 @@
   "name": "cmdr-vscode",
   "displayName": "cmdr - Local AI Coding Assistant",
   "description": "Local-first alternative to Copilot. Your models, your machine, your data.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "sinisterchill",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
     "url": "https://github.com/reyyanxahmed/cmdr"
   },
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.90.0"
   },
