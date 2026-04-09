@@ -7,7 +7,7 @@
 
 import type {
   LLMAdapter, LLMMessage, LLMChatOptions, LLMStreamOptions,
-  LLMResponse, StreamEvent, ContentBlock, TextBlock,
+  LLMResponse, StreamEvent, ContentBlock, TextBlock, ImageBlock,
   ToolUseBlock, ToolResultBlock, LLMToolDef, TokenUsage,
 } from '../core/types.js'
 import { validateToolCallShape } from './validation/tool-call-schema.js'
@@ -313,11 +313,26 @@ export class OpenAIAdapter implements LLMAdapter {
             })
           }
         } else {
-          const text = msg.content
-            .filter((b): b is TextBlock => b.type === 'text')
-            .map(b => b.text)
-            .join('')
-          if (text) result.push({ role: 'user', content: text })
+          const textBlocks = msg.content.filter((b): b is TextBlock => b.type === 'text')
+          const imageBlocks = msg.content.filter((b): b is ImageBlock => b.type === 'image')
+
+          if (imageBlocks.length > 0) {
+            // OpenAI vision: use content array format with text + image_url
+            const parts: Array<Record<string, unknown>> = []
+            for (const tb of textBlocks) {
+              parts.push({ type: 'text', text: tb.text })
+            }
+            for (const ib of imageBlocks) {
+              parts.push({
+                type: 'image_url',
+                image_url: { url: `data:${ib.source.media_type};base64,${ib.source.data}` },
+              })
+            }
+            result.push({ role: 'user', content: parts as any })
+          } else {
+            const text = textBlocks.map(b => b.text).join('')
+            if (text) result.push({ role: 'user', content: text })
+          }
         }
       } else if (msg.role === 'assistant') {
         const text = msg.content

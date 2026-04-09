@@ -1,0 +1,77 @@
+{
+  "name": "cmdr-vscode",
+  "displayName": "cmdr - Local AI Coding Assistant",
+  "description": "Local-first alternative to Copilot. Your models, your machine, your data.",
+  "version": "0.1.0",
+  "publisher": "reyyanxahmed",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["AI", "Programming Languages"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "cmdr.chat",
+        "name": "cmdr",
+        "description": "Local AI coding assistant powered by Ollama",
+        "isSticky": true
+      }
+    ],
+    "commands": [
+      { "command": "cmdr.chat", "title": "cmdr: Open Chat" },
+      { "command": "cmdr.explain", "title": "cmdr: Explain Selection" },
+      { "command": "cmdr.refactor", "title": "cmdr: Refactor Selection" },
+      { "command": "cmdr.writeTests", "title": "cmdr: Write Tests" },
+      { "command": "cmdr.fixDiagnostic", "title": "cmdr: Fix Error" },
+      { "command": "cmdr.review", "title": "cmdr: Review Changes" },
+      { "command": "cmdr.switchModel", "title": "cmdr: Switch Model" }
+    ],
+    "configuration": {
+      "title": "cmdr",
+      "properties": {
+        "cmdr.model": {
+          "type": "string",
+          "default": "qwen3-coder",
+          "description": "Primary model for chat and code actions"
+        },
+        "cmdr.completionModel": {
+          "type": "string",
+          "default": "qwen2.5-coder:7b",
+          "description": "Lightweight model for inline completions (FIM)"
+        },
+        "cmdr.effort": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "max"],
+          "default": "medium",
+          "description": "Effort level for agent responses"
+        },
+        "cmdr.ollamaUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama server URL"
+        },
+        "cmdr.inlineCompletions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AI inline code completions"
+        },
+        "cmdr.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-start cmdr serve on activation"
+        },
+        "cmdr.port": {
+          "type": "number",
+          "default": 4200,
+          "description": "Port for cmdr serve HTTP server"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/vscode/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "package": "vsce package"
+  }
+}

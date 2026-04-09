@@ -80,14 +80,24 @@ cmdr
 |---|---|---|
 | 🔒 | **Local-first** | All inference on your hardware via Ollama |
 | 🤖 | **Multi-agent teams** | Code review, full-stack, security audit presets |
-| 🛠 | **13 built-in tools** | Files, grep, glob, bash, git, web fetch, think |
+| 🛠 | **18 built-in tools** | Files, grep, glob, bash, git, web fetch, think, browser, RAG search |
 | ✅ | **Human-in-the-loop** | Approve, deny, or always-allow each tool call |
 | 🧠 | **Context compaction** | Multi-stage strategy keeps long conversations in bounds |
 | 🔌 | **Plugins & MCP** | Extend with npm modules or Model Context Protocol servers |
-| 💾 | **Session persistence** | Auto-save, resume, `--continue` |
+| 💾 | **Session persistence** | Auto-save, resume, `--continue`, checkpoints, branches |
 | ↩️ | **Undo** | `/undo` reverts any file change the agent made |
 | 📊 | **Token tracking** | `/cost` for per-session usage breakdown |
 | 📁 | **Project awareness** | Reads `CMDR.md` for project-specific instructions |
+| 🌐 | **HTTP API** | `cmdr serve` exposes REST + SSE endpoints |
+| 🖼️ | **Vision** | Attach images to prompts with `--image` |
+| 🎯 | **Effort levels** | `--effort low\|medium\|high\|max` controls reasoning depth |
+| 🔍 | **RAG indexing** | Index codebases and search with embeddings |
+| 🌿 | **Branching** | Fork, switch, and merge conversation branches |
+| ✅ | **Checkpoints** | Save and restore conversation snapshots |
+| 🐾 | **Buddy** | Deterministic ASCII companion that levels up as you code |
+| 👁️ | **Daemon mode** | Watch files and run commands on change |
+| 🌐 | **Browser agent** | Optional Playwright-based browser automation |
+| 🧩 | **VS Code extension** | `@cmdr` chat, inline completions, code actions |
 
 ## Quick Start
 
@@ -111,6 +121,21 @@ cmdr -m llama3.1:8b
 
 # Multi-agent review
 cmdr --team review
+
+# Attach an image
+cmdr --image screenshot.png "what's wrong with this UI?"
+
+# Control reasoning depth
+cmdr --effort max "architect a plugin system"
+
+# Quick mode (alias for --effort low)
+cmdr --fast "rename this variable"
+
+# Start HTTP API server
+cmdr serve --port 3120 --model qwen3-coder:latest
+
+# Daemon mode — watch and react
+cmdr daemon start --watch src --on-change "npm test"
 ```
 
 ## Documentation
@@ -124,6 +149,21 @@ cmdr --team review
 | [Configuration](docs/configuration.md) | Config files, env vars, permissions, CMDR.md |
 | [Benchmarks](docs/benchmarks.md) | Eval suite and HumanEval results |
 | [Architecture](docs/architecture.md) | Project structure and development setup |
+
+## What's New in v3
+
+- **`cmdr serve`** — HTTP API with REST and SSE streaming endpoints
+- **Effort levels** — Replace `--think` with `--effort low|medium|high|max`
+- **Vision input** — `--image` / `/image` for multimodal prompts
+- **Conversation branching** — `/fork`, `/switch`, `/merge` branches
+- **Checkpoints** — Save and restore conversation snapshots
+- **RAG indexing** — `/index` a codebase, `/search` with embeddings
+- **Code review** — `/review` with staged, range, and path options
+- **Daemon mode** — `cmdr daemon start --watch src --on-change "npm test"`
+- **Browser agent** — Playwright automation with `--browser`
+- **Buddy system** — ASCII companion pet that levels up (disable with `--no-buddy`)
+- **VS Code extension** — `@cmdr` chat participant, inline completions, code actions
+- **SDK exports** — Use cmdr as a library: `import { Agent, createAdapter } from 'cmdr-agent'`
 
 ## Contributing
 

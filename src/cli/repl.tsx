@@ -10,12 +10,13 @@
 
 import React from 'react'
 import { render } from 'ink'
-import type { LLMAdapter, ToolUseBlock, ToolResultBlock, ApprovalDecision, ToolRiskLevel, AgentConfig } from '../core/types.js'
+import type { LLMAdapter, ToolUseBlock, ToolResultBlock, ApprovalDecision, ToolRiskLevel, AgentConfig, EffortLevel } from '../core/types.js'
+import { EFFORT_CONFIGS } from '../core/types.js'
 import { Agent } from '../core/agent.js'
 import { OllamaAdapter } from '../llm/ollama.js'
 import { createAdapter, detectProviderFromModel, type ProviderName } from '../llm/provider-factory.js'
 import { ToolRegistry } from '../tools/registry.js'
-import { registerBuiltInTools } from '../tools/built-in/index.js'
+import { registerBuiltInTools, registerBrowserTools } from '../tools/built-in/index.js'
 import { SOLO_CODER, getTeamPreset } from '../core/presets.js'
 import { Orchestrator } from '../core/orchestrator.js'
 import type { TeamConfig } from '../core/types.js'
@@ -53,6 +54,7 @@ import { HookManager } from '../core/hooks.js'
 import { detectCodeReviewGraph, graphDatabaseExists, buildCrgMcpConfig } from '../config/mcp-config.js'
 import { GraphContextProvider } from '../core/graph-context.js'
 import { setGraphToolsClient } from '../tools/built-in/graph-tools.js'
+import { BuddyManager } from './buddy.js'
 
 export interface ReplOptions {
   model: string
@@ -67,9 +69,10 @@ export interface ReplOptions {
   team?: string
   maxTurns?: number
   outputFormat?: 'text' | 'json' | 'stream-json'
-  think?: boolean
-  noThink?: boolean
-  fast?: boolean
+  effort?: EffortLevel
+  image?: string
+  noBuddy?: boolean
+  browser?: boolean
 }
 
 export async function startRepl(options: ReplOptions): Promise<void> {
@@ -139,6 +142,16 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   // Tool registry
   const toolRegistry = new ToolRegistry()
   registerBuiltInTools(toolRegistry)
+
+  // Browser tools (optional, requires --browser flag)
+  if (options.browser) {
+    const registered = await registerBrowserTools(toolRegistry)
+    if (!registered) {
+      console.log(`  ${YELLOW('⚠')} ${DIM('Browser tools unavailable: install playwright-core')}`)
+    } else {
+      console.log(`  ${DIM('Browser: 5 tools registered (headless Chromium)')}`)
+    }
+  }
 
   // Plugin manager
   const pluginManager = new PluginManager()
@@ -289,15 +302,13 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     agentConfig.maxTurns = config.maxTurns
   }
 
-  // Thinking mode: --fast implies --no-think + lower temperature
-  if (options.fast) {
-    agentConfig.thinkingEnabled = false
-    agentConfig.temperature = 0.2
-  } else if (options.noThink) {
-    agentConfig.thinkingEnabled = false
-  } else if (options.think) {
-    agentConfig.thinkingEnabled = true
+  // Effort level: --effort flag or --fast alias
+  const effortLevel: EffortLevel = options.effort ?? 'medium'
+  const effortConfig = EFFORT_CONFIGS[effortLevel]
+  if (effortConfig.thinkingEnabled !== undefined) {
+    agentConfig.thinkingEnabled = effortConfig.thinkingEnabled
   }
+  agentConfig.temperature = effortConfig.temperature
 
   const agent = new Agent(
     agentConfig,
@@ -372,6 +383,16 @@ export async function startRepl(options: ReplOptions): Promise<void> {
   }
   const welcomeBanner = renderWelcome(currentModel, projectInfo, options.version, welcomeOpts)
 
+  // Buddy system — startup greeting
+  const buddyManager = new BuddyManager()
+  if (!options.noBuddy) {
+    try {
+      const buddyGreeting = await buddyManager.getGreeting()
+      console.log(`\n${buddyGreeting}\n`)
+      await buddyManager.recordSession()
+    } catch { /* buddy is non-critical */ }
+  }
+
   if (startupNotice) {
     console.log(startupNotice)
   }
@@ -389,7 +410,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
 
   // --- Handle one-shot prompt (non-interactive) ---
   if (options.initialPrompt) {
-    await handleOneShot(options.initialPrompt, agent, session, currentModel, permissionManager, verbose, adapter, costTracker, undoManager, options.outputFormat)
+    await handleOneShot(options.initialPrompt, agent, session, currentModel, permissionManager, verbose, adapter, costTracker, undoManager, options.outputFormat, options.image)
     await doSave()
     await pluginManager.runOnSessionEnd(session.getState())
 
@@ -484,12 +505,31 @@ async function handleOneShot(
   costTracker: CostTracker,
   undoManager: UndoManager,
   outputFormat: 'text' | 'json' | 'stream-json' = 'text',
+  imagePath?: string,
 ): Promise<void> {
+  // If an image is attached, prepend it as a user message with image content
+  if (imagePath) {
+    const { readFile: readFs } = await import('fs/promises')
+    const { extname } = await import('path')
+    const ext = extname(imagePath).toLowerCase()
+    const mimeMap: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' }
+    const mediaType = mimeMap[ext] || 'image/png'
+    const imageData = await readFs(imagePath)
+    const base64 = imageData.toString('base64')
+    agent.addImageMessage(message, base64, mediaType)
+    // Stream with no additional message text since we already added it
+    message = ''
+  }
+
   // JSON or stream-json output — structured machine-readable output
   if (outputFormat === 'json' || outputFormat === 'stream-json') {
     const startTime = Date.now()
     let fullOutput = ''
-    const toolsCalled: string[] = []
+    const toolsCalled: { name: string; duration_ms: number }[] = []
+    const filesModified = new Set<string>()
+    let currentToolStart = 0
+    let currentToolName = ''
+    let exitCode = 0
 
     try {
       for await (const event of agent.stream(message)) {
@@ -498,39 +538,51 @@ async function handleOneShot(
             const chunk = event.data as string
             fullOutput += chunk
             if (outputFormat === 'stream-json') {
-              console.log(JSON.stringify({ type: 'text', data: chunk }))
+              console.log(JSON.stringify({ type: 'text', data: chunk, timestamp: Date.now() }))
             }
             break
           }
           case 'tool_use': {
             const block = event.data as ToolUseBlock
-            toolsCalled.push(block.name)
+            currentToolName = block.name
+            currentToolStart = Date.now()
+            // Track file modifications
+            if (block.name === 'file_write' || block.name === 'file_edit') {
+              const filePath = (block.input.path ?? block.input.file_path) as string | undefined
+              if (filePath) filesModified.add(filePath)
+            }
             if (outputFormat === 'stream-json') {
-              console.log(JSON.stringify({ type: 'tool_use', name: block.name, input: block.input }))
+              console.log(JSON.stringify({ type: 'tool_use', tool: block.name, input: block.input, timestamp: Date.now() }))
             }
             break
           }
           case 'tool_result': {
             const block = event.data as ToolResultBlock
+            const duration_ms = Date.now() - currentToolStart
+            toolsCalled.push({ name: currentToolName, duration_ms })
+            if (block.is_error) exitCode = 1
             if (outputFormat === 'stream-json') {
-              console.log(JSON.stringify({ type: 'tool_result', name: toolsCalled[toolsCalled.length - 1], data: block.content, is_error: block.is_error }))
+              console.log(JSON.stringify({ type: 'tool_result', tool: currentToolName, output: block.content, is_error: block.is_error, duration_ms, timestamp: Date.now() }))
             }
+            currentToolName = ''
             break
           }
           case 'done': break
           case 'error': {
+            exitCode = 1
             const err = event.data as Error
             if (outputFormat === 'stream-json') {
-              console.log(JSON.stringify({ type: 'error', message: err.message }))
+              console.log(JSON.stringify({ type: 'error', message: err.message, timestamp: Date.now() }))
             }
             break
           }
         }
       }
     } catch (err) {
+      exitCode = 1
       const msg = err instanceof Error ? err.message : String(err)
       if (outputFormat === 'stream-json') {
-        console.log(JSON.stringify({ type: 'error', message: msg }))
+        console.log(JSON.stringify({ type: 'error', message: msg, timestamp: Date.now() }))
       }
     }
 
@@ -543,8 +595,10 @@ async function handleOneShot(
         model,
         response: fullOutput,
         tools_called: toolsCalled,
+        files_modified: [...filesModified],
         tokens: { input: tokens.input_tokens, output: tokens.output_tokens },
         duration_ms: durationMs,
+        exit_code: exitCode,
       }))
     } else {
       console.log(JSON.stringify({
@@ -556,6 +610,7 @@ async function handleOneShot(
 
     costTracker.record(model, tokens.input_tokens, tokens.output_tokens, toolsCalled.length)
     session.syncFromAgent(agent.getHistory())
+    process.exitCode = exitCode
     return
   }
 

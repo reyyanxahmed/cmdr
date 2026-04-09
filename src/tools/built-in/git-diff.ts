@@ -9,17 +9,22 @@ import { defineTool } from '../registry.js'
 export const gitDiffTool = defineTool({
   name: 'git_diff',
   description:
-    'Show the git diff of the working tree or staged changes. ' +
+    'Show the git diff of the working tree, staged changes, or a commit range. ' +
     'Useful for reviewing changes before committing.',
 
   inputSchema: z.object({
     staged: z.boolean().optional().describe('If true, show staged changes (--cached).'),
     path: z.string().optional().describe('Limit diff to a specific file or directory.'),
+    range: z.string().optional().describe('Commit range (e.g. "HEAD~1..HEAD", "main..feature"). Overrides staged flag.'),
   }),
 
   execute: async (input, context) => {
     const args = ['diff', '--no-color']
-    if (input.staged) args.push('--cached')
+    if (input.range) {
+      args.push(input.range)
+    } else if (input.staged) {
+      args.push('--cached')
+    }
     if (input.path) args.push('--', input.path)
 
     const cwd = context.cwd ?? process.cwd()

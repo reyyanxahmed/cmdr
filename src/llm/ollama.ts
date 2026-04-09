@@ -465,6 +465,7 @@ export class OllamaAdapter implements LLMAdapter {
       if (msg.role === 'user') {
         const textParts: string[] = []
         const toolResults: Array<{ type: string; tool_use_id: string; content: string }> = []
+        const images: string[] = []
 
         for (const block of msg.content) {
           if (block.type === 'text') {
@@ -475,6 +476,8 @@ export class OllamaAdapter implements LLMAdapter {
               tool_use_id: block.tool_use_id,
               content: block.content,
             })
+          } else if (block.type === 'image') {
+            images.push(block.source.data)
           }
         }
 
@@ -484,7 +487,9 @@ export class OllamaAdapter implements LLMAdapter {
             result.push({ role: 'tool', content: tr.content })
           }
         } else {
-          result.push({ role: 'user', content: textParts.join('\n') })
+          const userMsg: Record<string, unknown> = { role: 'user', content: textParts.join('\n') }
+          if (images.length > 0) userMsg.images = images
+          result.push(userMsg)
         }
       } else if (msg.role === 'assistant') {
         const text = msg.content

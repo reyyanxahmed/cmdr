@@ -216,6 +216,7 @@ export default function App(props: InkAppProps): React.ReactElement {
   const [tokensOut, setTokensOut] = useState(0)
   const [turnCount, setTurnCount] = useState(0)
   const planModeRef = useRef(false)
+  const pendingImageRef = useRef<string | null>(null)
 
   const currentModelRef = useRef(props.model)
   const activeTeamRef = useRef(props.activeTeamConfig)
@@ -409,6 +410,10 @@ export default function App(props: InkAppProps): React.ReactElement {
     const contextLimit = getDefaultContextLength(currentModelRef.current)
     if (session.tokenCount > contextLimit * 0.70) {
       try {
+        // Auto-checkpoint before compaction
+        const { CheckpointManager } = await import('../../session/checkpoint-manager.js')
+        const cpMgr = new CheckpointManager(session.id ?? 'default')
+        await cpMgr.save('auto-pre-compact', agent.getHistory(), currentModelRef.current).catch(() => {})
         const stats = await session.compact(adapter, currentModelRef.current)
         agent.replaceMessages(session.messages)
         appendOutput(`  ${DIM(`◇ pre-compacted: ${stats.before} → ${stats.after} messages (saved ~${stats.tokensSaved} tokens)`)}`)
@@ -624,6 +629,10 @@ export default function App(props: InkAppProps): React.ReactElement {
     // Auto-compact if needed
     if (session.shouldCompact()) {
       try {
+        // Auto-checkpoint before compaction
+        const { CheckpointManager } = await import('../../session/checkpoint-manager.js')
+        const cpMgr = new CheckpointManager(session.id ?? 'default')
+        await cpMgr.save('auto-pre-compact', agent.getHistory(), currentModelRef.current).catch(() => {})
         const stats = await session.compact(adapter, currentModelRef.current)
         agent.replaceMessages(session.messages)
         appendOutput(`  ${DIM(`◇ compacted: ${stats.before} messages → ${stats.after} messages (saved ~${stats.tokensSaved} tokens)`)}`)
@@ -747,6 +756,10 @@ export default function App(props: InkAppProps): React.ReactElement {
 
     if (result === '__COMPACT__') {
       session.syncFromAgent(agent.getHistory())
+      // Auto-checkpoint before compaction
+      const { CheckpointManager: CpMgr } = await import('../../session/checkpoint-manager.js')
+      const cpMgr = new CpMgr(session.id ?? 'default')
+      await cpMgr.save('auto-pre-compact', agent.getHistory(), currentModelRef.current).catch(() => {})
       const stats = await session.compact(adapter, currentModelRef.current)
       agent.replaceMessages(session.messages)
       appendOutput(`  ${DIM('ℹ')} ${WHITE(`${DIM(`◇ compacted: ${stats.before} messages → ${stats.after} messages (saved ~${stats.tokensSaved} tokens)`)}`)}`)
@@ -761,6 +774,224 @@ export default function App(props: InkAppProps): React.ReactElement {
           cwd: process.cwd(),
         })
         appendOutput(`\n${WHITE(diffResult.data)}\n`)
+      }
+      return false
+    }
+
+    // /review command — get diff and send as structured review prompt
+    if (typeof result === 'string' && result.startsWith('__REVIEW__:')) {
+      const reviewArgs = result.slice('__REVIEW__:'.length).trim()
+      const gitTool = toolRegistry.get('git_diff')
+      if (!gitTool) {
+        appendOutput(`  ${ERROR_SYM} ${RED('git_diff tool not available.')}`)
+        return false
+      }
+
+      // Parse review args: --staged, range (e.g. HEAD~3..HEAD), or path
+      let diffInput: Record<string, unknown> = {}
+      if (!reviewArgs) {
+        // Default: HEAD~1..HEAD
+        diffInput = { range: 'HEAD~1..HEAD' }
+      } else if (reviewArgs === '--staged') {
+        diffInput = { staged: true }
+      } else if (reviewArgs.includes('..')) {
+        // Commit range like HEAD~3..HEAD
+        const parts = reviewArgs.split(/\s+/)
+        diffInput = { range: parts[0] }
+        if (parts[1]) diffInput.path = parts[1]
+      } else {
+        // Path scope
+        diffInput = { range: 'HEAD~1..HEAD', path: reviewArgs }
+      }
+
+      const diffResult = await gitTool.execute(diffInput, {
+        agent: { name: 'cmdr', role: 'assistant', model: currentModelRef.current },
+        cwd: process.cwd(),
+      })
+
+      if (diffResult.isError || diffResult.data === '(no changes)') {
+        appendOutput(`  ${DIM('ℹ')} ${WHITE(diffResult.data)}`)
+        return false
+      }
+
+      const reviewPrompt = `Please review the following git diff. Analyze for:\n1. **Logic errors** — incorrect behavior, off-by-one, wrong conditions\n2. **Security** — injection, exposure, auth gaps\n3. **Performance** — unnecessary work, missing caching, O(n²) patterns\n4. **Style** — naming, consistency, readability\n5. **Error handling** — missing catches, swallowed errors, unclear messages\n\nBe specific. Reference line numbers and file names. Suggest fixes where applicable.\n\n\`\`\`diff\n${diffResult.data}\n\`\`\``
+
+      await handleUserMessage(reviewPrompt)
+      return false
+    }
+
+    // /effort command — set effort level
+    if (typeof result === 'string' && result.startsWith('__EFFORT__:')) {
+      const level = result.slice('__EFFORT__:'.length) as import('../../core/types.js').EffortLevel
+      const { EFFORT_CONFIGS } = await import('../../core/types.js')
+      const config = EFFORT_CONFIGS[level]
+      const cfg = agent.config as unknown as { thinkingEnabled?: boolean; temperature?: number }
+      cfg.thinkingEnabled = config.thinkingEnabled
+      cfg.temperature = config.temperature
+      const levelColors: Record<string, (s: string) => string> = { low: GREEN, medium: YELLOW, high: PURPLE, max: RED }
+      const colorFn = levelColors[level] || WHITE
+      appendOutput(`  ${DIM('ℹ')} ${WHITE('Effort:')} ${colorFn(level)} ${DIM(`(think=${config.thinkingEnabled ?? 'auto'}, temp=${config.temperature})`)}`)
+      return false
+    }
+
+    // /image command — set pending image for next prompt
+    if (typeof result === 'string' && result.startsWith('__IMAGE__:')) {
+      const imgPath = result.slice('__IMAGE__:'.length)
+      const { existsSync } = await import('fs')
+      const { resolve } = await import('path')
+      const resolvedPath = resolve(imgPath)
+      if (!existsSync(resolvedPath)) {
+        appendOutput(`  ${ERROR_SYM} ${RED(`Image not found: ${imgPath}`)}`)
+      } else {
+        pendingImageRef.current = resolvedPath
+        appendOutput(`  ${DIM('ℹ')} ${WHITE(`Image attached: ${GREEN(imgPath)} — will be included in your next message`)}`)
+      }
+      return false
+    }
+
+    // /checkpoint command
+    if (typeof result === 'string' && result.startsWith('__CHECKPOINT__:')) {
+      const { CheckpointManager } = await import('../../session/checkpoint-manager.js')
+      const cpManager = new CheckpointManager(session.id ?? 'default')
+      const payload = result.slice('__CHECKPOINT__:'.length)
+
+      if (payload === 'list') {
+        const checkpoints = await cpManager.list()
+        if (checkpoints.length === 0) {
+          appendOutput(`  ${DIM('No checkpoints saved. Use /checkpoint save [label]')}`)
+        } else {
+          const lines = ['', `  ${PURPLE.bold('Checkpoints')}`, '']
+          for (const cp of checkpoints) {
+            const date = new Date(cp.createdAt)
+            const timeStr = date.toLocaleTimeString()
+            lines.push(`  ${GREEN('•')} ${DIM(cp.id.slice(0, 20))}  ${WHITE(cp.label)}  ${DIM(cp.model)}  ${DIM(timeStr)}  ${DIM(`${cp.messageCount} msgs`)}`)
+          }
+          lines.push('')
+          appendLines(lines)
+        }
+      } else if (payload.startsWith('save:')) {
+        const label = payload.slice('save:'.length)
+        session.syncFromAgent(agent.getHistory())
+        const cp = await cpManager.save(label, session.messages, currentModelRef.current)
+        appendOutput(`  ${DIM('ℹ')} ${WHITE(`Checkpoint saved: ${GREEN(cp.label)} (${cp.messageCount} messages)`)}`)
+      } else if (payload.startsWith('restore:')) {
+        const id = payload.slice('restore:'.length)
+        const cp = await cpManager.restore(id)
+        if (cp) {
+          agent.replaceMessages(cp.messages)
+          session.syncFromAgent(cp.messages)
+          appendOutput(`  ${DIM('ℹ')} ${WHITE(`Restored checkpoint: ${GREEN(cp.label)} (${cp.messageCount} messages)`)}`)
+        } else {
+          appendOutput(`  ${ERROR_SYM} ${RED(`Checkpoint not found: ${id}`)}`)
+        }
+      } else if (payload.startsWith('delete:')) {
+        const id = payload.slice('delete:'.length)
+        const deleted = await cpManager.delete(id)
+        if (deleted) {
+          appendOutput(`  ${DIM('ℹ')} ${WHITE('Checkpoint deleted.')}`)
+        } else {
+          appendOutput(`  ${ERROR_SYM} ${RED(`Checkpoint not found: ${id}`)}`)
+        }
+      }
+      return false
+    }
+
+    // /fork, /branches, /switch, /merge commands
+    if (typeof result === 'string' && result.startsWith('__BRANCH__:')) {
+      const { BranchManager } = await import('../../session/branch-manager.js')
+      const brManager = new BranchManager(session.id ?? 'default')
+      const payload = result.slice('__BRANCH__:'.length)
+
+      if (payload === 'list') {
+        const branches = await brManager.list()
+        if (branches.length === 0) {
+          appendOutput(`  ${DIM('No branches. Use /fork [name] to create one.')}`)
+        } else {
+          const lines = ['', `  ${PURPLE.bold('Branches')}`, '']
+          for (const br of branches) {
+            const date = new Date(br.createdAt)
+            const timeStr = date.toLocaleTimeString()
+            const active = br.id === brManager.activeBranch ? ` ${GREEN('← active')}` : ''
+            lines.push(`  ${GREEN('•')} ${DIM(br.id.slice(0, 20))}  ${WHITE(br.name)}  ${DIM(timeStr)}  ${DIM(`${br.messageCount} msgs`)}${active}`)
+          }
+          lines.push('')
+          appendLines(lines)
+        }
+      } else if (payload.startsWith('fork:')) {
+        const name = payload.slice('fork:'.length)
+        session.syncFromAgent(agent.getHistory())
+        const br = await brManager.fork(name, session.messages, currentModelRef.current)
+        appendOutput(`  ${DIM('ℹ')} ${WHITE(`Forked branch: ${GREEN(br.name)} (${br.messageCount} messages)`)}`)
+      } else if (payload.startsWith('switch:')) {
+        const id = payload.slice('switch:'.length)
+        const br = await brManager.switch(id)
+        if (br) {
+          agent.replaceMessages(br.messages)
+          session.syncFromAgent(br.messages)
+          appendOutput(`  ${DIM('ℹ')} ${WHITE(`Switched to branch: ${GREEN(br.name)} (${br.messageCount} messages)`)}`)
+        } else {
+          appendOutput(`  ${ERROR_SYM} ${RED(`Branch not found: ${id}`)}`)
+        }
+      } else if (payload.startsWith('merge:')) {
+        const id = payload.slice('merge:'.length)
+        const merged = await brManager.merge(id, agent.getHistory())
+        if (merged) {
+          agent.replaceMessages(merged)
+          session.syncFromAgent(merged)
+          appendOutput(`  ${DIM('ℹ')} ${WHITE(`Merged branch into current conversation (${merged.length} messages)`)}`)
+        } else {
+          appendOutput(`  ${ERROR_SYM} ${RED(`Branch not found: ${id}`)}`)
+        }
+      }
+      return false
+    }
+
+    // /index and /search commands — RAG indexing
+    if (typeof result === 'string' && result.startsWith('__INDEX__:')) {
+      const { IndexManager } = await import('../../memory/index-manager.js')
+      const { setIndexManager } = await import('../../tools/built-in/rag-search.js')
+      const idxManager = new IndexManager(process.cwd(), props.ollamaUrl)
+      setIndexManager(idxManager)
+      const payload = result.slice('__INDEX__:'.length)
+
+      if (payload === 'status') {
+        const status = await idxManager.status()
+        appendOutput(`  ${DIM('Index:')} ${WHITE(`${status.fileCount} files, ${status.chunkCount} chunks`)} ${DIM(`(model: ${status.model}, updated: ${status.updatedAt})`)}`)
+      } else if (payload === 'clear') {
+        await idxManager.clear()
+        appendOutput(`  ${DIM('ℹ')} ${WHITE('Index cleared.')}`)
+      } else if (payload.startsWith('search:')) {
+        const query = payload.slice('search:'.length)
+        try {
+          const results = await idxManager.search(query)
+          if (results.length === 0) {
+            appendOutput(`  ${DIM('No results. Make sure files are indexed with /index <path>.')}`)
+          } else {
+            const lines = ['', `  ${PURPLE.bold('Search Results')}`, '']
+            for (const r of results) {
+              lines.push(`  ${GREEN('•')} ${CYAN(`${r.file}:${r.startLine}-${r.endLine}`)} ${DIM(`(score: ${r.score.toFixed(3)})`)}`)
+              const preview = r.text.split('\n').slice(0, 3).map(l => `    ${DIM(l)}`).join('\n')
+              lines.push(preview)
+            }
+            lines.push('')
+            appendLines(lines)
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          appendOutput(`  ${ERROR_SYM} ${RED(`Search failed: ${msg}`)}`)
+        }
+      } else if (payload.startsWith('index:')) {
+        const path = payload.slice('index:'.length)
+        appendOutput(`  ${DIM('Indexing')} ${WHITE(path)}${DIM('...')}`)
+        try {
+          const count = await idxManager.index([path], (msg) => {
+            appendOutput(`  ${DIM(msg)}`)
+          })
+          appendOutput(`  ${DIM('ℹ')} ${WHITE(`Indexed ${GREEN(String(count))} new chunks`)}`)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          appendOutput(`  ${ERROR_SYM} ${RED(`Indexing failed: ${msg}`)}`)
+        }
       }
       return false
     }
@@ -1098,7 +1329,22 @@ export default function App(props: InkAppProps): React.ReactElement {
         const planMsg = `[System: PLAN MODE is active. Analyze the request and produce a numbered step-by-step plan. Do NOT make any changes.]\n\n${input}`
         await handleUserMessage(planMsg)
       } else {
-        await handleUserMessage(input)
+        // If an image is pending, attach it to this message
+        if (pendingImageRef.current) {
+          const { readFile: readFs } = await import('fs/promises')
+          const { extname } = await import('path')
+          const ext = extname(pendingImageRef.current).toLowerCase()
+          const mimeMap: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' }
+          const mediaType = mimeMap[ext] || 'image/png'
+          const imageData = await readFs(pendingImageRef.current)
+          const base64 = imageData.toString('base64')
+          agent.addImageMessage(input, base64, mediaType)
+          pendingImageRef.current = null
+          // Stream with empty message since we already added the user message with image
+          await handleUserMessage('')
+        } else {
+          await handleUserMessage(input)
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

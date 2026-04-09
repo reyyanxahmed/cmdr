@@ -21,6 +21,7 @@ interface AnthropicMessage {
 
 type AnthropicContentBlock =
   | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }
 
@@ -296,6 +297,16 @@ export class AnthropicAdapter implements LLMAdapter {
       for (const block of msg.content) {
         if (block.type === 'text') {
           blocks.push({ type: 'text', text: (block as TextBlock).text })
+        } else if (block.type === 'image') {
+          const ib = block as import('../core/types.js').ImageBlock
+          blocks.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: ib.source.media_type,
+              data: ib.source.data,
+            },
+          })
         } else if (block.type === 'tool_use') {
           const tb = block as ToolUseBlock
           blocks.push({ type: 'tool_use', id: tb.id, name: tb.name, input: tb.input })

@@ -14,17 +14,21 @@ export {
   SOLO_CODER, CODE_REVIEW_TEAM, FULL_STACK_TEAM, SECURITY_AUDIT_TEAM,
   getPreset, getTeamPreset, listTeamPresets,
 } from './core/presets.js'
+export { EventBus, globalEventBus } from './core/event-bus.js'
+export { PermissionManager } from './core/permissions.js'
 export type {
   AgentConfig, AgentState, AgentRunResult,
   LLMAdapter, LLMMessage, LLMResponse, LLMChatOptions,
-  StreamEvent, ContentBlock, TextBlock, ToolUseBlock, ToolResultBlock,
+  StreamEvent, ContentBlock, TextBlock, ToolUseBlock, ToolResultBlock, ImageBlock,
   TokenUsage, ToolCallRecord,
   ToolDefinition, ToolResult, ToolUseContext,
   TeamConfig, TeamRunResult, Task, TaskStatus,
   SessionState, ProjectContext,
   CmdrPlugin, SlashCommand,
   CmdrConfig, OrchestratorConfig, OrchestratorEvent,
+  EffortLevel, EffortConfig,
 } from './core/types.js'
+export { EFFORT_CONFIGS } from './core/types.js'
 
 // Communication
 export { MessageBus } from './communication/message-bus.js'
@@ -44,11 +48,17 @@ export { registerBuiltInTools, BUILT_IN_TOOLS } from './tools/built-in/index.js'
 
 // LLM
 export { OllamaAdapter } from './llm/ollama.js'
+export { OpenAIAdapter } from './llm/openai.js'
+export { AnthropicAdapter } from './llm/anthropic.js'
+export { createAdapter } from './llm/provider-factory.js'
+export type { ProviderName, ProviderOptions } from './llm/provider-factory.js'
 export { getModelInfo, getDefaultContextLength, getRecommendedModel } from './llm/model-registry.js'
 export { countTokens, countMessageTokens } from './llm/token-counter.js'
 
 // Session
 export { SessionManager } from './session/session-manager.js'
+export { CheckpointManager } from './session/checkpoint-manager.js'
+export { BranchManager } from './session/branch-manager.js'
 export { discoverProject } from './session/project-context.js'
 export { buildSystemPrompt, PromptBuilder, PROMPT_PRIORITIES } from './session/prompt-builder.js'
 export type { PromptModule, PromptBuildOptions } from './session/prompt-builder.js'
@@ -60,6 +70,9 @@ export { CostTracker } from './session/cost-tracker.js'
 export type { CostEntry, CostSummary } from './session/cost-tracker.js'
 export { UndoManager } from './session/undo-manager.js'
 export type { FileChange } from './session/undo-manager.js'
+
+// Memory
+export { MemoryManager } from './memory/memory-manager.js'
 
 // Plugins & MCP
 export { PluginManager } from './plugins/plugin-manager.js'
@@ -73,3 +86,7 @@ export type { TelemetryEvent } from './config/telemetry.js'
 
 // CLI
 export { startRepl } from './cli/repl.js'
+
+// Server
+export { startServer } from './server/index.js'
+export type { ServeOptions } from './server/index.js'

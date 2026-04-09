@@ -596,23 +596,118 @@ registerCommand({
 })
 
 registerCommand({
-  name: 'think',
-  description: 'Toggle thinking mode (on/off/auto)',
-  execute: async (args, context) => {
-    const mode = args.trim().toLowerCase()
-    if (mode === 'on' || mode === 'off' || mode === 'auto') {
-      context.setThinkingMode(mode)
-      return renderInfo(`Thinking mode: ${mode === 'on' ? GREEN('on') : mode === 'off' ? RED('off') : YELLOW('auto')}`)
+  name: 'review',
+  description: 'Review git changes: /review, /review --staged, /review HEAD~3..HEAD, /review src/',
+  execute: async (args) => {
+    return `__REVIEW__:${args || ''}`
+  },
+})
+
+registerCommand({
+  name: 'checkpoint',
+  description: 'Conversation checkpoints: save, list, restore, delete',
+  execute: async (args) => {
+    const parts = args.trim().split(/\s+/)
+    const sub = parts[0]?.toLowerCase()
+
+    if (!sub || sub === 'list') return '__CHECKPOINT__:list'
+    if (sub === 'save') {
+      const label = parts.slice(1).join(' ') || `checkpoint-${Date.now()}`
+      return `__CHECKPOINT__:save:${label}`
     }
-    return renderInfo('Usage: /think on | off | auto')
+    if (sub === 'restore' && parts[1]) return `__CHECKPOINT__:restore:${parts[1]}`
+    if (sub === 'delete' && parts[1]) return `__CHECKPOINT__:delete:${parts[1]}`
+
+    return renderInfo('Usage: /checkpoint save [label] | list | restore <id> | delete <id>')
+  },
+})
+
+registerCommand({
+  name: 'fork',
+  description: 'Fork conversation into a named branch',
+  execute: async (args) => {
+    const name = args.trim() || `branch-${Date.now()}`
+    return `__BRANCH__:fork:${name}`
+  },
+})
+
+registerCommand({
+  name: 'branches',
+  description: 'List conversation branches',
+  execute: async () => {
+    return '__BRANCH__:list'
+  },
+})
+
+registerCommand({
+  name: 'switch',
+  description: 'Switch to a branch: /switch <id>',
+  execute: async (args) => {
+    if (!args.trim()) return renderInfo('Usage: /switch <branch-id>')
+    return `__BRANCH__:switch:${args.trim()}`
+  },
+})
+
+registerCommand({
+  name: 'merge',
+  description: 'Merge a branch into current conversation: /merge <id>',
+  execute: async (args) => {
+    if (!args.trim()) return renderInfo('Usage: /merge <branch-id>')
+    return `__BRANCH__:merge:${args.trim()}`
+  },
+})
+
+registerCommand({
+  name: 'effort',
+  description: 'Set effort level: /effort low|medium|high|max',
+  execute: async (args, context) => {
+    const level = args.trim().toLowerCase()
+    if (level === 'low' || level === 'medium' || level === 'high' || level === 'max') {
+      return `__EFFORT__:${level}`
+    }
+    if (!level) {
+      return renderInfo('Usage: /effort low | medium | high | max')
+    }
+    return renderInfo(`Invalid effort level: ${RED(level)}. Use low, medium, high, or max.`)
+  },
+})
+
+registerCommand({
+  name: 'image',
+  description: 'Attach an image to the next prompt: /image <path>',
+  execute: async (args) => {
+    const path = args.trim()
+    if (!path) return renderInfo('Usage: /image <path.png>')
+    return `__IMAGE__:${path}`
   },
 })
 
 registerCommand({
   name: 'fast',
-  description: 'Toggle fast mode (thinking off + low temperature)',
-  execute: async (_args, context) => {
-    context.setThinkingMode('off')
-    return renderInfo(`Fast mode ${GREEN('enabled')} — thinking disabled, lower temperature`)
+  description: 'Set effort to low (fast mode)',
+  execute: async () => {
+    return '__EFFORT__:low'
+  },
+})
+
+registerCommand({
+  name: 'index',
+  description: 'Index files for RAG search: /index <path>, /index status, /index clear',
+  execute: async (args) => {
+    const trimmed = args.trim()
+    if (!trimmed) return renderInfo('Usage: /index <path|status|clear>')
+    if (trimmed === 'status') return '__INDEX__:status'
+    if (trimmed === 'clear') return '__INDEX__:clear'
+    return `__INDEX__:index:${trimmed}`
+  },
+})
+
+registerCommand({
+  name: 'search',
+  description: 'Semantic search over indexed documents: /search <query>',
+  execute: async (args) => {
+    const query = args.trim()
+    if (!query) return renderInfo('Usage: /search <query>')
+    return `__INDEX__:search:${query}`
   },
 })

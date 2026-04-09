@@ -9,6 +9,8 @@
 
 import { parseArgs, printHelp } from '../src/cli/args.js'
 import { startRepl } from '../src/cli/repl.js'
+import { startServer } from '../src/server/index.js'
+import { CmdrDaemon } from '../src/cli/daemon.js'
 import { GREEN, PURPLE, DIM, renderError, CYAN } from '../src/cli/theme.js'
 import { OllamaAdapter } from '../src/llm/ollama.js'
 import { checkForUpdate } from '../src/cli/update-checker.js'
@@ -176,6 +178,64 @@ async function main(): Promise<void> {
 
   const ollamaUrl = args.ollamaUrl ?? process.env.CMDR_OLLAMA_URL ?? 'http://localhost:11434'
 
+  // Handle 'serve' subcommand: cmdr serve [--port N] [--host H] [-m model]
+  if (args.serve) {
+    const model = args.model ?? process.env.CMDR_MODEL ?? 'qwen2.5-coder:14b'
+    await startServer({
+      port: args.port ?? 4141,
+      host: args.host ?? '127.0.0.1',
+      model,
+      ollamaUrl,
+      provider: args.provider,
+    })
+    return
+  }
+
+  // Handle 'daemon' subcommand: cmdr daemon start|status|stop
+  if (args.daemon) {
+    const cwd = args.cwd ? (await import('path')).resolve(args.cwd) : process.cwd()
+    switch (args.daemon) {
+      case 'start': {
+        if (!args.watch || args.watch.length === 0) {
+          console.error(renderError('--watch <path> required for daemon start'))
+          process.exit(1)
+        }
+        if (!args.onChange) {
+          console.error(renderError('--on-change <command> required for daemon start'))
+          process.exit(1)
+        }
+        const daemon = new CmdrDaemon({ watchPaths: args.watch, onChange: args.onChange, cwd })
+        await daemon.start()
+        break
+      }
+      case 'status': {
+        const info = await CmdrDaemon.status(cwd)
+        if (info) {
+          console.log(`${GREEN('●')} Daemon running (PID ${info.pid})`)
+          console.log(`  Watching: ${info.watchPaths.join(', ')}`)
+          console.log(`  On change: ${info.onChange}`)
+          console.log(`  Started: ${info.startedAt}`)
+        } else {
+          console.log(`${DIM('○')} No daemon running for this directory`)
+        }
+        break
+      }
+      case 'stop': {
+        const stopped = await CmdrDaemon.stopByPid(cwd)
+        if (stopped) {
+          console.log(`${GREEN('✓')} Daemon stopped`)
+        } else {
+          console.log(`${DIM('○')} No daemon running to stop`)
+        }
+        break
+      }
+      default:
+        console.error(renderError(`Unknown daemon command: ${args.daemon}. Use: start, status, stop`))
+        process.exit(1)
+    }
+    return
+  }
+
   // Auto-detect model if not specified
   let model = args.model ?? process.env.CMDR_MODEL
   if (!model) {
@@ -223,9 +283,10 @@ async function main(): Promise<void> {
       team: args.team,
       maxTurns: args.maxTurns,
       outputFormat: args.outputFormat,
-      think: args.think,
-      noThink: args.noThink,
-      fast: args.fast,
+      effort: args.fast ? 'low' : args.effort,
+      image: args.image,
+      noBuddy: args.noBuddy,
+      browser: args.browser,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

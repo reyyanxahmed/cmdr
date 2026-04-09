@@ -146,6 +146,20 @@ export class Agent {
     this.state.messages = [...messages]
   }
 
+  /** Add a user message with both text and an image attachment. */
+  addImageMessage(text: string, base64Data: string, mediaType: string): void {
+    this.state.messages.push({
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          source: { type: 'base64', media_type: mediaType, data: base64Data },
+        },
+        { type: 'text', text },
+      ],
+    })
+  }
+
   setCwd(cwd: string): void {
     this.cwd = cwd
   }

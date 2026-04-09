@@ -7,12 +7,40 @@
 import type { ZodSchema } from 'zod'
 
 // ---------------------------------------------------------------------------
+// Effort levels
+// ---------------------------------------------------------------------------
+
+export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
+
+export interface EffortConfig {
+  readonly thinkingEnabled: boolean | undefined
+  readonly temperature: number
+  readonly maxTokensMultiplier: number
+}
+
+export const EFFORT_CONFIGS: Record<EffortLevel, EffortConfig> = {
+  low:    { thinkingEnabled: false, temperature: 0.1, maxTokensMultiplier: 1 },
+  medium: { thinkingEnabled: undefined, temperature: 0.3, maxTokensMultiplier: 1 },
+  high:   { thinkingEnabled: true, temperature: 0.3, maxTokensMultiplier: 1 },
+  max:    { thinkingEnabled: true, temperature: 0.5, maxTokensMultiplier: 2 },
+}
+
+// ---------------------------------------------------------------------------
 // Content blocks
 // ---------------------------------------------------------------------------
 
 export interface TextBlock {
   readonly type: 'text'
   readonly text: string
+}
+
+export interface ImageBlock {
+  readonly type: 'image'
+  readonly source: {
+    readonly type: 'base64'
+    readonly media_type: string
+    readonly data: string
+  }
 }
 
 export interface ToolUseBlock {
@@ -29,7 +57,7 @@ export interface ToolResultBlock {
   readonly is_error?: boolean
 }
 
-export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock
+export type ContentBlock = TextBlock | ImageBlock | ToolUseBlock | ToolResultBlock
 
 // ---------------------------------------------------------------------------
 // LLM messages & responses

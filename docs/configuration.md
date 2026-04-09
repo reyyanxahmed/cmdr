@@ -15,11 +15,17 @@
 defaultModel = "qwen3-coder:latest"
 ollamaUrl = "http://localhost:11434"
 
+[effort]
+default = "medium"   # low, medium, high, max
+
 [spinner]
 speed = 150
 
+[buddy]
+enabled = true       # set false to disable the buddy companion
+
 [telemetry]
-enabled = false   # opt-in local-only usage stats
+enabled = false      # opt-in local-only usage stats
 ```
 
 ## Environment Variables
@@ -61,6 +67,38 @@ Run `vitest` after every change.
 ```
 
 You can also use `.cmdr/instructions.md` — both files are loaded and concatenated.
+
+## Persistent Storage
+
+cmdr stores data under `~/.cmdr/`:
+
+| Path | Description |
+|------|-------------|
+| `~/.cmdr/config.toml` | User configuration |
+| `~/.cmdr/sessions/` | Session data, checkpoints, branches |
+| `~/.cmdr/buddy.json` | Buddy companion state (XP, level, achievements) |
+| `~/.cmdr/index/` | RAG document index cache |
+| `~/.cmdr/daemon/` | Daemon PID files |
+
+## Server Configuration
+
+When running `cmdr serve`, the server binds to `127.0.0.1:3120` by default:
+
+```bash
+cmdr serve --port 8080 --host 0.0.0.0 --model qwen3-coder:latest
+```
+
+## VS Code Extension Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `cmdr.model` | `qwen3-coder:latest` | Model for chat and code actions |
+| `cmdr.completionModel` | `qwen2.5-coder:7b` | Model for inline completions |
+| `cmdr.effort` | `medium` | Default effort level |
+| `cmdr.ollamaUrl` | `http://localhost:11434` | Ollama server URL |
+| `cmdr.inlineCompletions` | `true` | Enable inline completions |
+| `cmdr.autoStart` | `true` | Auto-start cmdr serve on activation |
+| `cmdr.port` | `3120` | Server port |
 
 ---
 

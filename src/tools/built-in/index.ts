@@ -28,6 +28,8 @@ import { enterPlanModeTool, exitPlanModeTool } from './plan-tools.js'
 import { mcpListResourcesTool, mcpReadResourceTool } from './mcp-resource-tools.js'
 import { graphImpactTool, graphQueryTool, graphReviewTool } from './graph-tools.js'
 import { pdfReportTool } from './pdf-report.js'
+import { ragSearchTool } from './rag-search.js'
+import { BROWSER_TOOLS, isPlaywrightAvailable } from './browser.js'
 
 export {
   bashTool, fileReadTool, fileWriteTool, fileEditTool,
@@ -42,6 +44,7 @@ export {
   mcpListResourcesTool, mcpReadResourceTool,
   graphImpactTool, graphQueryTool, graphReviewTool,
   pdfReportTool,
+  ragSearchTool,
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,6 +61,7 @@ export const BUILT_IN_TOOLS: ToolDefinition<any>[] = [
   mcpListResourcesTool, mcpReadResourceTool,
   graphImpactTool, graphQueryTool, graphReviewTool,
   pdfReportTool,
+  ragSearchTool,
 ]
 
 export function registerBuiltInTools(registry: ToolRegistry): void {
@@ -66,4 +70,19 @@ export function registerBuiltInTools(registry: ToolRegistry): void {
       registry.register(tool)
     }
   }
+}
+
+/**
+ * Register browser automation tools (requires --browser flag and playwright-core).
+ * Call this separately after registerBuiltInTools when browser mode is enabled.
+ */
+export async function registerBrowserTools(registry: ToolRegistry): Promise<boolean> {
+  const available = await isPlaywrightAvailable()
+  if (!available) return false
+  for (const tool of BROWSER_TOOLS) {
+    if (!registry.has(tool.name)) {
+      registry.register(tool)
+    }
+  }
+  return true
 }

@@ -2,6 +2,8 @@
  * CLI argument parsing.
  */
 
+import type { EffortLevel } from '../core/types.js'
+
 export interface CliArgs {
   model?: string
   ollamaUrl?: string
@@ -17,9 +19,21 @@ export interface CliArgs {
   team?: string
   maxTurns?: number
   outputFormat?: 'text' | 'json' | 'stream-json'
-  think?: boolean
-  noThink?: boolean
+  effort?: EffortLevel
   fast?: boolean
+  image?: string
+  // serve subcommand
+  serve?: boolean
+  port?: number
+  host?: string
+  // buddy
+  noBuddy?: boolean
+  // daemon subcommand
+  daemon?: string  // 'start' | 'status' | 'stop'
+  watch?: string[]
+  onChange?: string
+  // browser
+  browser?: boolean
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -80,14 +94,41 @@ export function parseArgs(argv: string[]): CliArgs {
       case '--output-format':
         args.outputFormat = argv[++i] as 'text' | 'json' | 'stream-json'
         break
-      case '--think':
-        args.think = true
-        break
-      case '--no-think':
-        args.noThink = true
+      case '--effort':
+      case '-e':
+        args.effort = argv[++i] as EffortLevel
         break
       case '--fast':
         args.fast = true
+        break
+      case '--image':
+      case '-i':
+        args.image = argv[++i]
+        break
+      case 'serve':
+        args.serve = true
+        break
+      case 'daemon':
+        args.daemon = argv[++i] // start|status|stop
+        break
+      case '--watch':
+        if (!args.watch) args.watch = []
+        args.watch.push(argv[++i])
+        break
+      case '--on-change':
+        args.onChange = argv[++i]
+        break
+      case '--port':
+        args.port = parseInt(argv[++i], 10)
+        break
+      case '--host':
+        args.host = argv[++i]
+        break
+      case '--no-buddy':
+        args.noBuddy = true
+        break
+      case '--browser':
+        args.browser = true
         break
       default:
         // If no flag prefix, treat as inline prompt
@@ -110,6 +151,7 @@ export function printHelp(): void {
 
   Usage:
     cmdr [options] [prompt]
+    cmdr serve [options]
 
   Options:
     -m, --model <name>       Set the Ollama model (auto-detects if omitted)
@@ -122,16 +164,28 @@ export function printHelp(): void {
     --verbose                Print full tool output (default: collapsed)
     --max-turns <n>          Maximum agent turns before stopping
     --output-format <fmt>    Output format: text (default), json, stream-json
-    --think                  Force thinking mode (extended reasoning)
-    --no-think               Disable thinking (faster responses for trivial prompts)
-    --fast                   Fast mode: disable thinking + lower temperature
+    -e, --effort <level>     Effort level: low, medium (default), high, max
+    --fast                   Alias for --effort low
+    -i, --image <path>       Attach an image to the prompt (vision models)
+    --no-buddy               Disable buddy companion on startup
+    --browser                Enable browser automation tools (requires playwright-core)
     -h, --help               Show this help
     -v, --version            Show version
     --dangerously-skip-permissions  Auto-approve all tool calls (yolo mode)
+
+  Serve options:
+    --port <n>               HTTP server port (default: 4141)
+    --host <addr>            HTTP server host (default: 127.0.0.1)
+
+  Daemon options:
+    --watch <path>           Directory to watch (repeatable)
+    --on-change <cmd>        Command to run on file change
 
   Examples:
     cmdr                           Start interactive REPL
     cmdr "fix the failing tests"   Run a single prompt
     cmdr -m llama3.1:8b            Start with a specific model
+    cmdr serve --port 8080         Start HTTP/SSE server
+    cmdr daemon start --watch src/ --on-change "npm run lint"
 `)
 }
