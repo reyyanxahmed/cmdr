@@ -3,7 +3,12 @@
   "displayName": "cmdr - Local AI Coding Assistant",
   "description": "Local-first alternative to Copilot. Your models, your machine, your data.",
   "version": "0.1.0",
-  "publisher": "reyyanxahmed",
+  "publisher": "sinisterchill",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/reyyanxahmed/cmdr"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -71,7 +76,13 @@
     }
   },
   "scripts": {
-    "build": "esbuild src/vscode/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
-    "package": "vsce package"
+    "build": "esbuild extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "package": "npm run build && vsce package",
+    "publish": "npm run build && vsce publish"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.21.0",
+    "@vscode/vsce": "^3.0.0"
   }
 }
