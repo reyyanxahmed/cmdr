@@ -3,11 +3,12 @@
  *
  * Activates on startup:
  * 1. Starts cmdr serve as child process
- * 2. Registers chat participant (@cmdr)
- * 3. Registers inline completion provider
- * 4. Registers code actions
- * 5. Registers status bar
- * 6. Registers commands
+ * 2. Registers custom webview chat panel (sidebar)
+ * 3. Registers chat participant (@cmdr)
+ * 4. Registers inline completion provider
+ * 5. Registers code actions
+ * 6. Registers status bar
+ * 7. Registers commands
  */
 
 import * as vscode from 'vscode'
@@ -17,6 +18,8 @@ import { InlineProvider } from './inline-provider.js'
 import { CodeActionProvider } from './code-action.js'
 import { StatusBar } from './status-bar.js'
 import { registerCommands } from './commands.js'
+import { ChatPanelManager } from './chat/panel-manager.js'
+import { MessageHandler } from './chat/message-handler.js'
 
 let serverManager: ServerManager | undefined
 
@@ -30,7 +33,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await serverManager.start()
   }
 
-  // Chat provider (@cmdr participant)
+  // Custom webview chat panel (sidebar)
+  const messageHandler = new MessageHandler(serverManager, context)
+  const chatPanelManager = new ChatPanelManager(context.extensionUri, messageHandler)
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(ChatPanelManager.viewType, chatPanelManager),
+  )
+
+  // Chat provider (@cmdr participant — built-in chat API)
   const chatProvider = new ChatProvider(serverManager, context)
   context.subscriptions.push(chatProvider.register())
 

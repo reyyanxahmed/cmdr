@@ -2,7 +2,7 @@
   "name": "cmdr-vscode",
   "displayName": "cmdr - Local AI Coding Assistant",
   "description": "Local-first alternative to Copilot. Your models, your machine, your data.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "sinisterchill",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
@@ -13,10 +13,29 @@
   "engines": {
     "vscode": "^1.90.0"
   },
-  "categories": ["AI", "Programming Languages"],
+  "categories": ["AI", "Programming Languages", "Chat"],
+  "keywords": ["ai", "copilot", "local", "ollama", "coding-assistant", "privacy", "llm"],
   "activationEvents": ["onStartupFinished"],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cmdr",
+          "title": "cmdr",
+          "icon": "$(terminal)"
+        }
+      ]
+    },
+    "views": {
+      "cmdr": [
+        {
+          "type": "webview",
+          "id": "cmdr.chatPanel",
+          "name": "Chat"
+        }
+      ]
+    },
     "chatParticipants": [
       {
         "id": "cmdr.chat",
@@ -26,13 +45,26 @@
       }
     ],
     "commands": [
-      { "command": "cmdr.chat", "title": "cmdr: Open Chat" },
+      { "command": "cmdr.openChat", "title": "cmdr: Open Chat", "icon": "$(comment-discussion)" },
       { "command": "cmdr.explain", "title": "cmdr: Explain Selection" },
       { "command": "cmdr.refactor", "title": "cmdr: Refactor Selection" },
       { "command": "cmdr.writeTests", "title": "cmdr: Write Tests" },
       { "command": "cmdr.fixDiagnostic", "title": "cmdr: Fix Error" },
       { "command": "cmdr.review", "title": "cmdr: Review Changes" },
-      { "command": "cmdr.switchModel", "title": "cmdr: Switch Model" }
+      { "command": "cmdr.switchModel", "title": "cmdr: Switch Model" },
+      { "command": "cmdr.toggleInline", "title": "cmdr: Toggle Inline Completions" }
+    ],
+    "menus": {
+      "editor/context": [
+        { "command": "cmdr.explain", "when": "editorHasSelection", "group": "cmdr@1" },
+        { "command": "cmdr.refactor", "when": "editorHasSelection", "group": "cmdr@2" },
+        { "command": "cmdr.writeTests", "when": "editorHasSelection", "group": "cmdr@3" },
+        { "command": "cmdr.fixDiagnostic", "group": "cmdr@4" }
+      ]
+    },
+    "keybindings": [
+      { "command": "cmdr.openChat", "key": "ctrl+shift+c", "mac": "cmd+shift+c" },
+      { "command": "cmdr.explain", "key": "ctrl+shift+e", "mac": "cmd+shift+e", "when": "editorHasSelection" }
     ],
     "configuration": {
       "title": "cmdr",
@@ -77,13 +109,20 @@
     }
   },
   "scripts": {
-    "build": "esbuild extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "build": "npm run build:ext && npm run build:webview",
+    "build:ext": "esbuild extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "build:webview": "esbuild webview/app.tsx --bundle --outfile=dist/webview/app.js --format=iife --platform=browser --loader:.css=css --inject:./webview/react-shim.ts --minify && cp webview/styles/chat.css dist/webview/chat.css",
+    "watch": "npm run build:ext -- --watch & npm run build:webview -- --watch",
     "package": "npm run build && vsce package",
     "publish": "npm run build && vsce publish"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
     "esbuild": "^0.21.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
     "@vscode/vsce": "^3.0.0"
   }
 }
