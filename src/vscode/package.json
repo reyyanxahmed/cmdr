@@ -2,7 +2,7 @@
   "name": "cmdr-vscode",
   "displayName": "cmdr - Local AI Coding Assistant",
   "description": "Local-first alternative to Copilot. Your models, your machine, your data.",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "publisher": "sinisterchill",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
@@ -52,7 +52,17 @@
       { "command": "cmdr.fixDiagnostic", "title": "cmdr: Fix Error" },
       { "command": "cmdr.review", "title": "cmdr: Review Changes" },
       { "command": "cmdr.switchModel", "title": "cmdr: Switch Model" },
-      { "command": "cmdr.toggleInline", "title": "cmdr: Toggle Inline Completions" }
+      { "command": "cmdr.toggleInline", "title": "cmdr: Toggle Inline Completions" },
+      { "command": "cmdr.diff.accept", "title": "cmdr: Accept Diff", "icon": "$(check)" },
+      { "command": "cmdr.diff.reject", "title": "cmdr: Reject Diff", "icon": "$(close)" },
+      { "command": "cmdr.newChat", "title": "cmdr: New Chat Session", "icon": "$(add)" },
+      { "command": "cmdr.toggleAutoApprove", "title": "cmdr: Toggle Auto-Approve Tools" },
+      { "command": "cmdr.managePlugins", "title": "cmdr: Manage Plugins" },
+      { "command": "cmdr.manageHookifyRules", "title": "cmdr: Manage Hookify Rules" },
+      { "command": "cmdr.createHookifyRule", "title": "cmdr: Create Hookify Rule" },
+      { "command": "cmdr.toggleAutonomousLoop", "title": "cmdr: Toggle Autonomous Loop" },
+      { "command": "cmdr.cancelLoop", "title": "cmdr: Cancel Autonomous Loop" },
+      { "command": "cmdr.toggleDeferredMode", "title": "cmdr: Toggle Deferred Mode" }
     ],
     "menus": {
       "editor/context": [
@@ -60,6 +70,17 @@
         { "command": "cmdr.refactor", "when": "editorHasSelection", "group": "cmdr@2" },
         { "command": "cmdr.writeTests", "when": "editorHasSelection", "group": "cmdr@3" },
         { "command": "cmdr.fixDiagnostic", "group": "cmdr@4" }
+      ],
+      "commandPalette": [
+        { "command": "cmdr.diff.accept", "when": "cmdr.diff.isVisible" },
+        { "command": "cmdr.diff.reject", "when": "cmdr.diff.isVisible" }
+      ],
+      "editor/title": [
+        { "command": "cmdr.diff.accept", "when": "cmdr.diff.isVisible", "group": "navigation" },
+        { "command": "cmdr.diff.reject", "when": "cmdr.diff.isVisible", "group": "navigation" }
+      ],
+      "view/title": [
+        { "command": "cmdr.newChat", "when": "view == cmdr.chatPanel", "group": "navigation" }
       ]
     },
     "keybindings": [
@@ -104,6 +125,60 @@
           "type": "number",
           "default": 4200,
           "description": "Port for cmdr serve HTTP server"
+        },
+        "cmdr.autoApprove": {
+          "type": "string",
+          "enum": ["ask", "auto"],
+          "default": "ask",
+          "description": "Tool approval mode: 'ask' prompts for each tool, 'auto' approves all automatically"
+        },
+        "cmdr.approvedTools": {
+          "type": "array",
+          "default": [],
+          "items": { "type": "string" },
+          "description": "List of tool names that are always auto-approved"
+        },
+        "cmdr.showTerminalOutput": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show terminal command output inline in chat"
+        },
+        "cmdr.useDiffEditor": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use native VS Code diff editor for file changes"
+        },
+        "cmdr.hooks": {
+          "type": "object",
+          "default": {},
+          "description": "Hook configuration. Keys are hook types (PreToolUse, PostToolUse, Stop, etc), values are arrays of {matcher, command, timeout}",
+          "markdownDescription": "Hook configuration. See [hooks docs](https://github.com/reyyanxahmed/cmdr#hooks) for details."
+        },
+        "cmdr.sandbox": {
+          "type": "object",
+          "default": { "enabled": false },
+          "description": "Sandbox configuration for command isolation and network restrictions",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "excludedCommands": { "type": "array", "items": { "type": "string" } },
+            "allowedCommands": { "type": "array", "items": { "type": "string" } },
+            "dangerousPatterns": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "cmdr.confidence": {
+          "type": "object",
+          "default": { "enabled": true, "threshold": 80, "hardBlockThreshold": 30 },
+          "description": "Confidence filtering for tool results. Scores outputs 0-100 and warns/blocks below threshold."
+        },
+        "cmdr.autonomousLoop": {
+          "type": "object",
+          "default": { "enabled": false, "maxIterations": 25, "requireApprovalEveryN": 0 },
+          "description": "Autonomous loop settings for iterative agent execution"
+        },
+        "cmdr.deferredMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Deferred/headless mode: pause at tool decisions and wait for explicit resume"
         }
       }
     }

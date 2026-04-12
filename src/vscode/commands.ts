@@ -6,6 +6,10 @@
 
 import * as vscode from 'vscode'
 import type { ServerManager } from './server-manager.js'
+import type { DiffManager } from './diff-manager.js'
+import type { PluginMarketplace } from './plugin-marketplace.js'
+import type { Hookify } from './hookify.js'
+import type { AutonomousLoopManager } from './autonomous-loops.js'
 
 /** Helper: send a prompt to cmdr serve and display result in a new editor or notification. */
 async function sendToCmdr(
@@ -55,7 +59,28 @@ async function sendToCmdr(
 export function registerCommands(
   context: vscode.ExtensionContext,
   serverManager: ServerManager,
+  diffManager: DiffManager,
+  pluginMarketplace?: PluginMarketplace,
+  hookify?: Hookify,
+  loopManager?: AutonomousLoopManager,
 ): void {
+  // cmdr.openChat — Focus the chat sidebar panel
+  context.subscriptions.push(
+    vscode.commands.registerCommand('cmdr.openChat', () => {
+      vscode.commands.executeCommand('cmdr.chatPanel.focus')
+    }),
+  )
+
+  // cmdr.toggleInline — Toggle inline completions
+  context.subscriptions.push(
+    vscode.commands.registerCommand('cmdr.toggleInline', async () => {
+      const config = vscode.workspace.getConfiguration('cmdr')
+      const current = config.get<boolean>('inlineCompletions', true)
+      await config.update('inlineCompletions', !current, vscode.ConfigurationTarget.Global)
+      vscode.window.showInformationMessage(`cmdr inline completions: ${!current ? 'enabled' : 'disabled'}`)
+    }),
+  )
+
   // cmdr.explain — Explain selected code
   context.subscriptions.push(
     vscode.commands.registerCommand('cmdr.explain', async (doc?: vscode.TextDocument, range?: vscode.Range) => {
@@ -206,6 +231,103 @@ export function registerCommands(
           await config.update('model', model, vscode.ConfigurationTarget.Workspace)
         }
       }
+    }),
+  )
+
+  // cmdr.diff.accept — Accept proposed diff changes
+  context.subscriptions.push(
+    vscode.commands.registerCommand('cmdr.diff.accept', async () => {
+      await diffManager.acceptDiff()
+    }),
+  )
+
+  // cmdr.diff.reject — Reject proposed diff changes
+  context.subscriptions.push(
+    vscode.commands.registerCommand('cmdr.diff.reject', async () => {
+      await diffManager.rejectDiff()
+    }),
+  )
+
+  // cmdr.newChat — Clear chat and start fresh
+  context.subscriptions.push(
+    vscode.commands.registerCommand('cmdr.newChat', () => {
+      vscode.commands.executeCommand('cmdr.chatPanel.focus')
+    }),
+  )
+
+  // cmdr.toggleAutoApprove — Toggle auto-approve mode
+  context.subscriptions.push(
+    vscode.commands.registerCommand('cmdr.toggleAutoApprove', async () => {
+      const config = vscode.workspace.getConfiguration('cmdr')
+      const current = config.get<string>('autoApprove', 'ask')
+      const next = current === 'ask' ? 'auto' : 'ask'
+      await config.update('autoApprove', next, vscode.ConfigurationTarget.Global)
+      vscode.window.showInformationMessage(`cmdr auto-approve: ${next === 'auto' ? 'enabled (all tools auto-approved)' : 'disabled (will ask for approval)'}`)
+    }),
+  )
+
+  // cmdr.managePlugins — Open plugin marketplace UI
+  context.subscriptions.push(
+    vscode.commands.registerCommand('cmdr.managePlugins', async () => {
+      if (pluginMarketplace) {
+        await pluginMarketplace.showPluginPicker()
+      } else {
+        vscode.window.showWarningMessage('Plugin marketplace not available')
+      }
+    }),
+  )
+
+  // cmdr.manageHookifyRules — Open hookify rule manager
+  context.subscriptions.push(
+    vscode.commands.registerCommand('cmdr.manageHookifyRules', async () => {
+      if (hookify) {
+        await hookify.showManager()
+      } else {
+        vscode.window.showWarningMessage('Hookify not available')
+      }
+    }),
+  )
+
+  // cmdr.createHookifyRule — Create a new hookify rule
+  context.subscriptions.push(
+    vscode.commands.registerCommand('cmdr.createHookifyRule', async () => {
+      if (hookify) {
+        await hookify.createRule()
+      } else {
+        vscode.window.showWarningMessage('Hookify not available')
+      }
+    }),
+  )
+
+  // cmdr.toggleAutonomousLoop — Toggle autonomous loop mode
+  context.subscriptions.push(
+    vscode.commands.registerCommand('cmdr.toggleAutonomousLoop', async () => {
+      const config = vscode.workspace.getConfiguration('cmdr')
+      const current = config.get<boolean>('autonomousLoop.enabled', false)
+      await config.update('autonomousLoop.enabled', !current, vscode.ConfigurationTarget.Global)
+      vscode.window.showInformationMessage(`cmdr autonomous loop: ${!current ? 'enabled' : 'disabled'}`)
+    }),
+  )
+
+  // cmdr.cancelLoop — Cancel the active autonomous loop
+  context.subscriptions.push(
+    vscode.commands.registerCommand('cmdr.cancelLoop', () => {
+      if (loopManager?.getActiveLoop()) {
+        loopManager.cancelLoop()
+        vscode.window.showInformationMessage('cmdr autonomous loop cancelled')
+      } else {
+        vscode.window.showInformationMessage('No active loop to cancel')
+      }
+    }),
+  )
+
+  // cmdr.toggleDeferredMode — Toggle deferred/headless mode
+  context.subscriptions.push(
+    vscode.commands.registerCommand('cmdr.toggleDeferredMode', async () => {
+      const config = vscode.workspace.getConfiguration('cmdr')
+      const current = config.get<boolean>('deferredMode', false)
+      await config.update('deferredMode', !current, vscode.ConfigurationTarget.Global)
+      vscode.window.showInformationMessage(`cmdr deferred mode: ${!current ? 'enabled (will pause at tool decisions)' : 'disabled'}`)
     }),
   )
 }

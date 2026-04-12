@@ -30,8 +30,17 @@ export class ChatPanelManager implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this.getHtml(webviewView.webview)
 
-    webviewView.webview.onDidReceiveMessage((msg) => {
-      this.messageHandler.handleWebviewMessage(msg, webviewView.webview)
+    webviewView.webview.onDidReceiveMessage(async (msg) => {
+      try {
+        await this.messageHandler.handleWebviewMessage(msg, webviewView.webview)
+      } catch (err) {
+        console.error('[cmdr] webview message error:', err)
+        webviewView.webview.postMessage({
+          type: 'streamError',
+          id: '',
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
     })
 
     // Send initial state

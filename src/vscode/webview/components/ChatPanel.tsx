@@ -7,6 +7,8 @@ import { InputArea } from './InputArea'
 import { ModelSelector } from './ModelSelector'
 import { EffortBadge } from './EffortBadge'
 import { WelcomeScreen } from './WelcomeScreen'
+import { ApprovalCard, type ApprovalRequest } from './ApprovalCard'
+import { TerminalOutput } from './TerminalOutput'
 
 export const ChatPanel: React.FC = () => {
   const { messages, addMessage, updateMessage, clearMessages, loadMessages } = useMessages()
@@ -15,6 +17,8 @@ export const ChatPanel: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [model, setModel] = useState('qwen3-coder')
   const [effort, setEffort] = useState('medium')
+  const [approvals, setApprovals] = useState<ApprovalRequest[]>([])
+  const [terminalOutputs, setTerminalOutputs] = useState<{ command: string; output: string; exitCode?: number; cwd?: string }[]>([])
   const currentStreamId = useRef<string | null>(null)
 
   // Auto-scroll to bottom
@@ -122,6 +126,84 @@ export const ChatPanel: React.FC = () => {
         case 'context':
           // Could store context for display
           break
+
+        case 'notification':
+          // Show notification inline if streaming, otherwise ignore
+          if (currentStreamId.current && msg.level === 'error') {
+            const id = currentStreamId.current
+            updateMessage(id, (m) => ({
+              ...m,
+              content: m.content + `\n\n⚠️ ${msg.text}`,
+            }))
+          }
+          break
+
+        case 'approvalRequired':
+          setApprovals((prev) => [
+            ...prev,
+            {
+              id: msg.approvalId,
+              tool: msg.tool,
+              input: msg.input,
+              description: msg.description,
+            },
+          ])
+          break
+
+        case 'terminalOutput':
+          setTerminalOutputs((prev) => [
+            ...prev,
+            {
+              command: msg.command,
+              output: msg.output,
+              exitCode: msg.exitCode,
+              cwd: msg.cwd,
+            },
+          ])
+          // Also append to the current message as a tool record
+          if (currentStreamId.current) {
+            const id = currentStreamId.current
+            updateMessage(id, (m) => {
+              const tools = [...m.tools]
+              tools.push({
+                name: `terminal: ${msg.command}`,
+                status: msg.exitCode === 0 || msg.exitCode === undefined ? 'done' : 'error',
+                output: msg.output,
+              })
+              return { ...m, tools }
+            })
+          }
+          break
+
+        case 'fileEdit':
+          // Show file edit notification in chat
+          if (currentStreamId.current) {
+            const id = currentStreamId.current
+            updateMessage(id, (m) => {
+              const tools = [...m.tools]
+              tools.push({
+                name: `edit: ${msg.filePath}`,
+                status: msg.status === 'pending' ? 'start' : 'done',
+              })
+              return { ...m, tools }
+            })
+          }
+          break
+
+        case 'diffResult':
+          // Show diff accept/reject result
+          if (currentStreamId.current) {
+            const id = currentStreamId.current
+            updateMessage(id, (m) => {
+              const tools = m.tools.map((t) =>
+                t.name.startsWith('edit:') && t.status === 'start'
+                  ? { ...t, status: (msg.accepted ? 'done' : 'error') as 'done' | 'error' }
+                  : t,
+              )
+              return { ...m, tools }
+            })
+          }
+          break
       }
     }
 
@@ -141,7 +223,24 @@ export const ChatPanel: React.FC = () => {
 
   const handleClearChat = () => {
     clearMessages()
+    setApprovals([])
+    setTerminalOutputs([])
     vscode.postMessage({ type: 'clearHistory' })
+  }
+
+  const handleApprove = (id: string) => {
+    vscode.postMessage({ type: 'approvalResponse', approvalId: id, approved: true })
+    setApprovals((prev) => prev.filter((a) => a.id !== id))
+  }
+
+  const handleDeny = (id: string) => {
+    vscode.postMessage({ type: 'approvalResponse', approvalId: id, approved: false })
+    setApprovals((prev) => prev.filter((a) => a.id !== id))
+  }
+
+  const handleAlwaysApprove = (id: string, tool: string) => {
+    vscode.postMessage({ type: 'approvalResponse', approvalId: id, approved: true, alwaysApprove: true, tool })
+    setApprovals((prev) => prev.filter((a) => a.id !== id))
   }
 
   return (
@@ -161,6 +260,18 @@ export const ChatPanel: React.FC = () => {
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
+
+        {/* Approval cards */}
+        {approvals.map((req) => (
+          <ApprovalCard
+            key={req.id}
+            request={req}
+            onApprove={handleApprove}
+            onDeny={handleDeny}
+            onAlwaysApprove={handleAlwaysApprove}
+          />
+        ))}
+
         <div ref={messagesEndRef} />
       </div>
 

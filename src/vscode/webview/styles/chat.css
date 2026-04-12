@@ -637,3 +637,210 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--vscode-scrollbarSlider-hoverBackground);
 }
+
+/* ═══════ Approval Cards ═══════ */
+
+.approval-card {
+  border: 1px solid var(--chat-warning);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0;
+  background: rgba(204, 167, 0, 0.06);
+  animation: fadeIn 0.2s ease-in;
+}
+
+.approval-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.approval-icon {
+  font-size: 16px;
+}
+
+.approval-tool {
+  margin-bottom: 8px;
+}
+
+.approval-tool-name {
+  background: var(--chat-code-bg);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.approval-description {
+  display: block;
+  color: var(--chat-muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.approval-input-details {
+  margin-bottom: 8px;
+}
+
+.approval-input-details summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--chat-muted);
+}
+
+.approval-input {
+  font-size: 11px;
+  background: var(--chat-code-bg);
+  padding: 6px 8px;
+  border-radius: 4px;
+  max-height: 120px;
+  overflow: auto;
+  margin-top: 4px;
+  white-space: pre-wrap;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.approval-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.approval-btn {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.approval-btn.approve {
+  background: var(--chat-success);
+  color: var(--vscode-editor-background);
+}
+
+.approval-btn.always-approve {
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.2));
+  color: var(--chat-success);
+  border: 1px solid var(--chat-success);
+}
+
+.approval-btn.deny {
+  background: var(--chat-error);
+  color: white;
+}
+
+.approval-btn:hover {
+  opacity: 0.9;
+}
+
+/* ═══════ Terminal Output ═══════ */
+
+.terminal-output {
+  border: 1px solid var(--chat-border);
+  border-radius: 6px;
+  margin: 6px 0;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.terminal-output.terminal-error {
+  border-color: var(--chat-error);
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.terminal-header:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.terminal-icon {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  color: var(--chat-success);
+  flex-shrink: 0;
+}
+
+.terminal-command {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  font-weight: 600;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-cwd {
+  color: var(--chat-muted);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.terminal-exit-code {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.terminal-exit-code.success {
+  color: var(--chat-success);
+}
+
+.terminal-exit-code.error {
+  color: var(--chat-error);
+  background: rgba(248, 81, 73, 0.1);
+}
+
+.terminal-toggle {
+  font-size: 10px;
+  color: var(--chat-muted);
+  flex-shrink: 0;
+}
+
+.terminal-content {
+  padding: 6px 10px;
+  margin: 0;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  line-height: 1.4;
+  background: var(--chat-code-bg);
+  white-space: pre-wrap;
+  max-height: 80px;
+  overflow: hidden;
+}
+
+.terminal-content.expanded {
+  max-height: 400px;
+  overflow: auto;
+}
+
+.terminal-more {
+  color: var(--chat-muted);
+  font-style: italic;
+}
+
+/* ═══════ Auto-Approved Badge ═══════ */
+
+.tool-card.tool-auto-approved {
+  border-left-color: var(--chat-accent);
+}
+
+.tool-card.tool-auto-approved .tool-icon::after {
+  content: ' auto';
+  font-size: 9px;
+  color: var(--chat-muted);
+}
