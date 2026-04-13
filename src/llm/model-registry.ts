@@ -30,6 +30,11 @@ const SEED_MODELS: ModelInfo[] = [
   { name: 'qwen3:8b', contextLength: 40960, supportsTools: true, parameterSize: '8B', recommended: 'lightweight' },
   { name: 'qwen3:14b', contextLength: 40960, supportsTools: true, parameterSize: '14B', recommended: 'midrange' },
   { name: 'qwen3:32b', contextLength: 40960, supportsTools: true, parameterSize: '32B', recommended: 'heavy' },
+  // Qwen cloud models (DashScope API)
+  { name: 'qwen3-max', contextLength: 131072, supportsTools: true, parameterSize: 'cloud', recommended: 'heavy' },
+  { name: 'qwen3-max-preview', contextLength: 131072, supportsTools: true, parameterSize: 'cloud', recommended: 'heavy' },
+  { name: 'qwen3.6-plus', contextLength: 131072, supportsTools: true, parameterSize: 'cloud', recommended: 'heavy' },
+  { name: 'qwen3.6-plus-2026-04-02', contextLength: 131072, supportsTools: true, parameterSize: 'cloud', recommended: 'heavy' },
   // Llama family
   { name: 'llama3.1:8b', contextLength: 131072, supportsTools: true, parameterSize: '8B', recommended: 'lightweight' },
   { name: 'llama3.1:70b', contextLength: 131072, supportsTools: true, parameterSize: '70B', recommended: 'heavy' },

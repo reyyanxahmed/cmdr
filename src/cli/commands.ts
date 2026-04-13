@@ -711,3 +711,33 @@ registerCommand({
     return `__INDEX__:search:${query}`
   },
 })
+
+// ---------------------------------------------------------------------------
+// API key management
+// ---------------------------------------------------------------------------
+
+registerCommand({
+  name: 'apikey',
+  description: 'Set API key for a provider: /apikey qwen | openai | anthropic',
+  execute: async (args) => {
+    const provider = args.trim().toLowerCase()
+    const supported = ['qwen', 'openai', 'anthropic']
+
+    if (!provider || !supported.includes(provider)) {
+      const lines = [
+        '',
+        `  ${PURPLE.bold('API Key Setup')}`,
+        '',
+        `  ${DIM('Usage:')} ${GREEN('/apikey <provider>')}`,
+        '',
+        ...supported.map(p => `  ${GREEN('•')} ${WHITE(p)}`),
+        '',
+        `  ${DIM('Your key will be saved to your shell profile and available in all future sessions.')}`,
+        '',
+      ]
+      return lines.join('\n')
+    }
+
+    return `__APIKEY__:${provider}`
+  },
+})

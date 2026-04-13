@@ -145,7 +145,7 @@ export interface ToolDefinition<TInput = Record<string, unknown>> {
 export interface AgentConfig {
   readonly name: string
   readonly model?: string
-  readonly provider?: 'ollama' | 'openai' | 'anthropic'
+  readonly provider?: 'ollama' | 'openai' | 'anthropic' | 'qwen'
   readonly systemPrompt?: string
   readonly tools?: readonly string[]
   readonly maxTurns?: number
@@ -315,7 +315,7 @@ export type ApprovalCallback = (
 export interface CmdrConfig {
   ollamaUrl: string
   defaultModel: string
-  defaultProvider: 'ollama' | 'openai' | 'anthropic'
+  defaultProvider: 'ollama' | 'openai' | 'anthropic' | 'qwen'
   maxConcurrency: number
   maxTurns: number
   contextBudget: number
@@ -441,6 +441,6 @@ export interface OrchestratorEvent {
 export interface OrchestratorConfig {
   readonly maxConcurrency?: number
   readonly defaultModel?: string
-  readonly defaultProvider?: 'ollama' | 'openai' | 'anthropic'
+  readonly defaultProvider?: 'ollama' | 'openai' | 'anthropic' | 'qwen'
   onProgress?: (event: OrchestratorEvent) => void
 }

@@ -8,7 +8,8 @@
 
 | Flag | Description |
 |------|-------------|
-| `-m, --model <name>` | Set the Ollama model |
+| `-m, --model <name>` | Set the model |
+| `--provider <name>` | Choose provider: `ollama`, `openai`, `anthropic`, `qwen` |
 | `-u, --ollama-url <url>` | Ollama server URL |
 | `-p, --prompt <text>` | Run a single prompt and exit |
 | `-r, --resume <id>` | Resume a previous session |

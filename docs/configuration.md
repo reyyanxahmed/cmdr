@@ -33,7 +33,14 @@ enabled = false      # opt-in local-only usage stats
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CMDR_MODEL` | `qwen2.5-coder:14b` | Default model |
+| `CMDR_PROVIDER` | `ollama` | Default provider (`ollama`, `openai`, `anthropic`, `qwen`) |
 | `CMDR_OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |
+| `OPENAI_API_KEY` / `CMDR_OPENAI_API_KEY` | — | OpenAI-compatible provider key |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible base URL override |
+| `ANTHROPIC_API_KEY` / `CMDR_ANTHROPIC_API_KEY` | — | Anthropic API key |
+| `ANTHROPIC_BASE_URL` | Anthropic default | Anthropic base URL override |
+| `QWEN_API_KEY` / `DASHSCOPE_API_KEY` / `CMDR_QWEN_API_KEY` | — | Qwen API key |
+| `QWEN_BASE_URL` / `DASHSCOPE_BASE_URL` | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | Qwen API base URL override |
 
 ## Permission Modes
 

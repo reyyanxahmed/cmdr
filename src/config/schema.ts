@@ -36,7 +36,7 @@ export const McpServerSchema = z.object({
 export const CmdrConfigSchema = z.object({
   ollamaUrl: z.string().url().default('http://localhost:11434'),
   defaultModel: z.string().default('qwen2.5-coder:14b'),
-  defaultProvider: z.enum(['ollama', 'openai', 'anthropic']).default('ollama'),
+  defaultProvider: z.enum(['ollama', 'openai', 'anthropic', 'qwen']).default('ollama'),
   maxConcurrency: z.number().int().min(1).max(16).default(2),
   maxTurns: z.number().int().min(1).max(500).default(30),
   contextBudget: z.number().int().min(1024).default(32768),

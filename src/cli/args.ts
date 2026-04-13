@@ -154,7 +154,8 @@ export function printHelp(): void {
     cmdr serve [options]
 
   Options:
-    -m, --model <name>       Set the Ollama model (auto-detects if omitted)
+    -m, --model <name>       Set the model (auto-detects if omitted)
+    --provider <name>        Provider: ollama, openai, anthropic, qwen
     -u, --ollama-url <url>   Ollama server URL (default: http://localhost:11434)
     -p, --prompt <text>      Run a single prompt and exit
     -r, --resume <id>        Resume a previous session

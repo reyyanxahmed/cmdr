@@ -31,6 +31,7 @@ import type { AgentRegistry } from '../../agents/registry.js'
 import type { CommandLoader } from '../../commands/loader.js'
 import type { TaskScheduler } from '../../scheduling/task-scheduler.js'
 import { listAvailableServers, getServerDefinition, toMcpConfig, getMissingEnvVars } from '../../config/mcp-registry.js'
+import { saveApiKey, type ProviderKeyName } from '../../config/api-key-store.js'
 import StatusBar from './StatusBar.js'
 import PromptInput from './PromptInput.js'
 import { StreamingMarkdownRenderer } from '../renderer.js'
@@ -82,7 +83,7 @@ function toPastTense(verb: string): string {
 // Types
 // ---------------------------------------------------------------------------
 
-type ReplState = 'idle' | 'processing' | 'waiting_approval' | 'exiting'
+type ReplState = 'idle' | 'processing' | 'waiting_approval' | 'apikey_input' | 'exiting'
 
 interface OutputLine {
   id: string
@@ -217,6 +218,8 @@ export default function App(props: InkAppProps): React.ReactElement {
   const [turnCount, setTurnCount] = useState(0)
   const planModeRef = useRef(false)
   const pendingImageRef = useRef<string | null>(null)
+  const [apikeyProvider, setApikeyProvider] = useState<ProviderKeyName | null>(null)
+  const [apikeyInput, setApikeyInput] = useState('')
 
   const currentModelRef = useRef(props.model)
   const activeTeamRef = useRef(props.activeTeamConfig)
@@ -259,7 +262,7 @@ export default function App(props: InkAppProps): React.ReactElement {
   }, [appendLines])
 
   const terminalRows = process.stdout.rows || 42
-  const reservedRows = state === 'idle' ? 9 : state === 'waiting_approval' ? 13 : 6
+  const reservedRows = state === 'idle' ? 9 : state === 'waiting_approval' ? 13 : state === 'apikey_input' ? 10 : 6
   const historyWindowSize = Math.max(8, terminalRows - reservedRows)
 
   const visibleOutputLines = useMemo(() => {
@@ -849,6 +852,15 @@ export default function App(props: InkAppProps): React.ReactElement {
       return false
     }
 
+    // /apikey command — prompt for masked key input
+    if (typeof result === 'string' && result.startsWith('__APIKEY__:')) {
+      const provider = result.slice('__APIKEY__:'.length) as ProviderKeyName
+      setApikeyProvider(provider)
+      setApikeyInput('')
+      setState('apikey_input')
+      return false
+    }
+
     // /checkpoint command
     if (typeof result === 'string' && result.startsWith('__CHECKPOINT__:')) {
       const { CheckpointManager } = await import('../../session/checkpoint-manager.js')
@@ -1405,6 +1417,11 @@ export default function App(props: InkAppProps): React.ReactElement {
           setApproval(null)
         }
         appendOutput(`\n  ${DIM('Interrupt — press Ctrl+C again to exit.')}`)
+      } else if (stateRef.current === 'apikey_input') {
+        setApikeyInput('')
+        setApikeyProvider(null)
+        setState('idle')
+        appendOutput(`  ${DIM('API key setup cancelled.')}`)
       } else if (stateRef.current === 'idle') {
         appendOutput(`  ${DIM('Press Ctrl+C again to exit.')}`)
       }
@@ -1416,6 +1433,32 @@ export default function App(props: InkAppProps): React.ReactElement {
       return
     }
   })
+
+  // ---------------------------------------------------------------------------
+  // Handle API key input
+  // ---------------------------------------------------------------------------
+
+  const handleApikeySubmit = useCallback(async (value: string) => {
+    const key = value.trim()
+    const provider = apikeyProvider
+    setApikeyInput('')
+    setApikeyProvider(null)
+    setState('idle')
+
+    if (!key || !provider) {
+      appendOutput(`  ${DIM('ℹ')} ${WHITE('API key setup cancelled.')}`)
+      return
+    }
+
+    try {
+      const result = await saveApiKey(provider, key)
+      appendOutput(`  ${SUCCESS_SYM} ${WHITE(`${GREEN(provider)} API key saved`)} ${DIM(`→ ${result.envVar} in ~/${result.profilePath.split('/').pop()}`)}`)
+      appendOutput(`  ${DIM('ℹ')} ${WHITE('Key is active for this session. New terminals will pick it up automatically.')}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      appendOutput(`  ${ERROR_SYM} ${RED(`Failed to save API key: ${msg}`)}`)
+    }
+  }, [apikeyProvider, appendOutput])
 
   // ---------------------------------------------------------------------------
   // Handle approval input
@@ -1494,6 +1537,26 @@ export default function App(props: InkAppProps): React.ReactElement {
               value={approvalInput}
               onChange={setApprovalInput}
               onSubmit={handleApprovalSubmit}
+            />
+          </Box>
+        </Box>
+      )}
+
+      {/* API key input prompt */}
+      {state === 'apikey_input' && apikeyProvider && (
+        <Box flexDirection="column">
+          <Text>{''}</Text>
+          <Text>{`  ${PURPLE('🔑')}  ${WHITE('Enter API key for')} ${CYAN(apikeyProvider)}`}</Text>
+          <Text>{`  ${DIM('Your key will be saved to your shell profile and set for this session.')}`}</Text>
+          <Text>{`  ${DIM('Press Ctrl+C to cancel.')}`}</Text>
+          <Text>{''}</Text>
+          <Box>
+            <Text>{`  ${YELLOW('⟩')} `}</Text>
+            <TextInput
+              value={apikeyInput}
+              onChange={setApikeyInput}
+              onSubmit={handleApikeySubmit}
+              mask="•"
             />
           </Box>
         </Box>

@@ -13,7 +13,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { Agent } from '../core/agent.js'
 import { OllamaAdapter } from '../llm/ollama.js'
-import { createAdapter, type ProviderName } from '../llm/provider-factory.js'
+import { createAdapter, detectProviderFromModel, type ProviderName } from '../llm/provider-factory.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { registerBuiltInTools } from '../tools/built-in/index.js'
 import { PermissionManager } from '../core/permissions.js'
@@ -82,7 +82,10 @@ export async function startServer(options: ServeOptions): Promise<void> {
   const cwd = process.cwd()
 
   // Resolve provider
-  const provider: ProviderName = (options.provider as ProviderName) ?? 'ollama'
+  const provider: ProviderName =
+    (options.provider as ProviderName | undefined)
+    ?? detectProviderFromModel(options.model)
+    ?? 'ollama'
   const adapter = createAdapter({ provider, ollamaUrl: options.ollamaUrl })
 
   // Discover project context

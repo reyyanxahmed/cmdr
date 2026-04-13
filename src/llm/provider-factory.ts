@@ -5,14 +5,17 @@
  *   - ollama: Local inference via Ollama (default)
  *   - openai: OpenAI API (also works with Groq, Together, OpenRouter)
  *   - anthropic: Anthropic Claude API
+ *   - qwen: Qwen API (OpenAI-compatible)
  *
  * API keys are read from environment variables:
  *   - OPENAI_API_KEY (or CMDR_OPENAI_API_KEY)
  *   - ANTHROPIC_API_KEY (or CMDR_ANTHROPIC_API_KEY)
+ *   - QWEN_API_KEY / DASHSCOPE_API_KEY (or CMDR_QWEN_API_KEY)
  *
  * Custom base URLs:
  *   - OPENAI_BASE_URL (e.g. https://openrouter.ai/api/v1)
  *   - ANTHROPIC_BASE_URL
+ *   - QWEN_BASE_URL / DASHSCOPE_BASE_URL
  */
 
 import type { LLMAdapter } from '../core/types.js'
@@ -20,7 +23,7 @@ import { OllamaAdapter } from './ollama.js'
 import { OpenAIAdapter } from './openai.js'
 import { AnthropicAdapter } from './anthropic.js'
 
-export type ProviderName = 'ollama' | 'openai' | 'anthropic'
+export type ProviderName = 'ollama' | 'openai' | 'anthropic' | 'qwen'
 
 export interface ProviderOptions {
   provider: ProviderName
@@ -69,6 +72,27 @@ export function createAdapter(options: ProviderOptions): LLMAdapter {
       })
     }
 
+    case 'qwen': {
+      const apiKey = options.apiKey
+        ?? process.env.CMDR_QWEN_API_KEY
+        ?? process.env.QWEN_API_KEY
+        ?? process.env.DASHSCOPE_API_KEY
+      if (!apiKey) {
+        throw new Error(
+          'Qwen API key required. Set QWEN_API_KEY, DASHSCOPE_API_KEY, or CMDR_QWEN_API_KEY environment variable.',
+        )
+      }
+      return new OpenAIAdapter({
+        apiKey,
+        baseUrl:
+          options.baseUrl
+          ?? process.env.QWEN_BASE_URL
+          ?? process.env.DASHSCOPE_BASE_URL
+          ?? 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+        name: 'qwen',
+      })
+    }
+
     default:
       throw new Error(`Unknown provider: ${options.provider}`)
   }
@@ -83,6 +107,8 @@ export function detectProviderFromModel(model: string): ProviderName | undefined
   if (/^claude-/i.test(model)) return 'anthropic'
   // GPT/o1/o3 models → OpenAI
   if (/^(gpt-|o1|o3|chatgpt)/i.test(model)) return 'openai'
+  // Cloud Qwen models (qwen-max, qwen-plus, qwen3-*) → Qwen API
+  if (/^qwen/i.test(model) && !model.includes(':')) return 'qwen'
   // Models with colons are typically Ollama tags (e.g. qwen2.5-coder:14b)
   if (model.includes(':')) return 'ollama'
 

@@ -62,4 +62,15 @@ describe('CmdrConfigSchema MCP validation', () => {
       expect(parsed.data.permissions?.ask).toEqual(['file_write(package.json)'])
     }
   })
+
+  it('accepts qwen as a default provider', () => {
+    const parsed = CmdrConfigSchema.safeParse({
+      defaultProvider: 'qwen',
+    })
+
+    expect(parsed.success).toBe(true)
+    if (parsed.success) {
+      expect(parsed.data.defaultProvider).toBe('qwen')
+    }
+  })
 })
